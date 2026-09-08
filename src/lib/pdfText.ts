@@ -1,3 +1,5 @@
+import { mergeCombiningMarks } from "./pdfMarks";
+
 // Extracts plain text lines from a PDF buffer using pdf.js's legacy Node build.
 // Text items are grouped into lines by their vertical (y) position so that
 // question/option/answer markers that pdf.js would otherwise flatten into one
@@ -18,13 +20,19 @@ export async function extractLinesFromPdf(buffer: Buffer): Promise<string[]> {
     const page = await doc.getPage(pageNum);
     const content = await page.getTextContent();
 
-    type Item = { str: string; x: number; y: number };
-    const items: Item[] = content.items
+    type Item = { str: string; x: number; y: number; endX: number };
+    const rawItems: Item[] = content.items
       .map((it) => {
         if (!("str" in it)) return null;
-        return { str: it.str, x: it.transform[4], y: it.transform[5] };
+        const x = it.transform[4];
+        const endX = x + (typeof it.width === "number" ? it.width : 0);
+        return { str: it.str, x, y: it.transform[5], endX };
       })
       .filter((it): it is Item => it !== null && it.str.trim().length > 0);
+
+    // Fold stray accent glyphs (vector arrows, unit-vector hats) onto their
+    // base letter before grouping, so they don't get split onto their own line.
+    const items = mergeCombiningMarks(rawItems);
 
     // Group items whose y-coordinates are close together into the same line.
     items.sort((a, b) => b.y - a.y || a.x - b.x);

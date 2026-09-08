@@ -27,7 +27,7 @@
         "./src/*"
       ],
       "@shared/*": [
-        "../shared/*"
+        "./src/shared/*"
       ]
     }
   },

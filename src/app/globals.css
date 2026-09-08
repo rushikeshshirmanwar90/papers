@@ -12,3 +12,66 @@ body {
   color: var(--foreground);
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
 }
+
+/* Vector/unit-vector accents (P⃗, î, ĵ, k̂): the UI font doesn't reliably
+   compose Unicode combining marks above the base letter, so MathText draws
+   the accent as a small positioned overlay instead of relying on the font. */
+.math-accent {
+  position: relative;
+  display: inline-block;
+}
+.math-accent::after {
+  content: attr(data-glyph);
+  position: absolute;
+  left: 50%;
+  top: -0.6em;
+  transform: translateX(-50%);
+  font-size: 0.62em;
+  line-height: 1;
+  color: currentColor;
+  pointer-events: none;
+}
+.math-accent[data-accent="vector"]::after {
+  top: -0.68em;
+  transform: translateX(-50%) scaleX(1.5);
+}
+
+/* Stacked fraction (numerator / bar / denominator), reconstructed by
+   pdfStacks.ts from PDFs that flatten a fraction into disconnected rows of
+   text with nothing marking them as belonging together. */
+.math-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin: 0 0.15em;
+  font-size: 0.88em;
+  line-height: 1.25;
+}
+.math-frac-num,
+.math-frac-den {
+  display: block;
+  padding: 0 0.2em;
+  white-space: nowrap;
+}
+.math-frac-num {
+  border-bottom: 1.2px solid currentColor;
+}
+
+/* Radical (√ + overline over the radicand), reconstructed the same way. */
+.math-root {
+  display: inline-flex;
+  align-items: flex-start;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.math-root-sign {
+  margin-right: 0.05em;
+  transform: scaleY(1.15);
+  transform-origin: bottom;
+}
+.math-root-radicand {
+  border-top: 1.2px solid currentColor;
+  padding: 0 0.15em;
+}

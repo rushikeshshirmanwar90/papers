@@ -54,4 +54,7 @@ See `src/lib/pdfText.ts` (pdf.js line extraction) and
 ## Notes
 
 - Uploaded PDFs are stored under `public/uploads/` (gitignored).
-- `@shared/*` resolves to `../shared` — TypeScript types shared with `/mobile`.
+- `@shared/*` resolves to `./src/shared` — a local copy of the types/parsing
+  logic also used by `/mobile` (which keeps its own copy at `/shared`, kept in
+  sync manually). This makes `/web` deployable on its own, without needing the
+  rest of the monorepo checked out.

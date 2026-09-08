@@ -4,6 +4,9 @@
 // pulls out embedded diagram images in the same reading-order sequence so they can
 // be attached to whichever question/explanation they appear next to.
 
+import { mergeCombiningMarks } from "./pdfMarks";
+import { reconstructStacks } from "./pdfStacks";
+
 export interface TextFragment {
   text: string;
   x: number;
@@ -173,6 +176,22 @@ function groupIntoLines(items: TextItem[]): { y: number; text: string; fragments
     .filter((l) => l.text);
 }
 
+// Wraps a "√" that already sits inline with its radicand on the same row
+// (the common case — only a radicand that's itself a stacked expression, like
+// a fraction, needs the cross-row merge in pdfStacks.ts) with the same
+// "⟦√...⟧" marker, so MathText draws the radical overline consistently
+// either way. Skips one already produced by that cross-row merge.
+const INLINE_ROOT_RE = /(?<!⟦)√(\([^()]*\)|[A-Za-zθπρελσΦφΩω0-9]+)/g;
+
+function wrapInlineRoots(line: { y: number; text: string; fragments: TextFragment[] }) {
+  if (!line.text.includes("√")) return line;
+  const text = line.text.replace(INLINE_ROOT_RE, (_match, inner: string) => {
+    const radicand = inner.startsWith("(") && inner.endsWith(")") ? inner.slice(1, -1) : inner;
+    return `⟦√${radicand}⟧`;
+  });
+  return { ...line, text };
+}
+
 export async function extractStructuredPdf(buffer: Buffer): Promise<PdfEvent[]> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const loadingTask = pdfjs.getDocument({
@@ -188,7 +207,7 @@ export async function extractStructuredPdf(buffer: Buffer): Promise<PdfEvent[]> 
     const viewport = page.getViewport({ scale: 1 });
     const content = await page.getTextContent();
 
-    const textItems: TextItem[] = content.items
+    const rawTextItems: TextItem[] = content.items
       .map((it) => {
         if (!("str" in it) || it.str.trim().length === 0) return null;
         const x = it.transform[4];
@@ -200,6 +219,11 @@ export async function extractStructuredPdf(buffer: Buffer): Promise<PdfEvent[]> 
         return { str: it.str, x, y, endX };
       })
       .filter((it): it is TextItem => it !== null);
+
+    // Fold stray accent glyphs (vector arrows, unit-vector hats) onto their
+    // base letter before line/column grouping, so they don't get split onto
+    // their own row and scrambled by the reading-order sort.
+    const textItems = mergeCombiningMarks(rawTextItems);
 
     // Walk the operator list, tracking the CTM stack, to find each embedded
     // image's placed position (page-space) and pixel data.
@@ -270,8 +294,10 @@ export async function extractStructuredPdf(buffer: Buffer): Promise<PdfEvent[]> 
       for (const e of entries) events.push(e.event);
     };
 
-    emitColumn(groupIntoLines(leftText), leftImages);
-    emitColumn(groupIntoLines(rightText), rightImages);
+    // Fold vertically-stacked fractions/roots/exponents onto their base row
+    // within each column before line-grouping flattens everything to text.
+    emitColumn(groupIntoLines(reconstructStacks(leftText)).map(wrapInlineRoots), leftImages);
+    emitColumn(groupIntoLines(reconstructStacks(rightText)).map(wrapInlineRoots), rightImages);
     events.push({ kind: "pagebreak" });
   }
 
