@@ -10,6 +10,8 @@ import { parseQuestionsFromLines } from "@/lib/questionParser";
 import { extractStructuredPdf } from "@/lib/pdfStructured";
 import { parseCoachingPaper } from "@/lib/coachingPaperParser";
 import { saveDiagrams } from "@/lib/saveDiagrams";
+import { extractTexPdf } from "@/lib/pdfTex";
+import { formatTexExplanation, stripAnswerMarker, tidyProse } from "@/lib/texExplanation";
 import type { ExamType } from "@shared/types";
 
 export const runtime = "nodejs";
@@ -46,8 +48,24 @@ export async function POST(req: NextRequest) {
     let questionRecords: Record<string, unknown>[] = questions.map((q) => ({ ...q }));
 
     if (questions.length === 0) {
-      const events = await extractStructuredPdf(buffer);
+      // TeX-typeset papers (Computer Modern fonts) go through the geometry
+      // reconstruction, which rebuilds every fraction, root and exponent as
+      // LaTeX; anything else uses the plain text-row extractor.
+      const tex = await extractTexPdf(buffer);
+      const events = tex.isTex ? tex.events : await extractStructuredPdf(buffer);
       const fallback = parseCoachingPaper(events);
+      if (tex.isTex) {
+        for (const q of fallback.questions) {
+          q.questionText = tidyProse(q.questionText);
+          q.optionA = tidyProse(q.optionA);
+          q.optionB = tidyProse(q.optionB);
+          q.optionC = tidyProse(q.optionC);
+          q.optionD = tidyProse(q.optionD);
+          const { answer, text } = stripAnswerMarker(q.explanation);
+          q.explanation = formatTexExplanation(text);
+          if (!q.correctAnswer && answer) q.correctAnswer = answer;
+        }
+      }
       questions = fallback.questions.map((q) => ({
         questionNumber: q.questionNumber,
         subject: q.subject,
@@ -125,6 +143,10 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     console.error("Upload/parse error:", err);
-    return NextResponse.json({ error: "Failed to process PDF upload" }, { status: 500 });
+    const detail = err instanceof Error ? err.message : "";
+    return NextResponse.json(
+      { error: detail ? `Failed to process PDF upload: ${detail}` : "Failed to process PDF upload" },
+      { status: 500 }
+    );
   }
 }

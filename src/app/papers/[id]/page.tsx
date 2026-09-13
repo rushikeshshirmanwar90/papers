@@ -20,6 +20,9 @@ export default function PaperDetailPage() {
   const [draft, setDraft] = useState<Draft>({});
   const [saving, setSaving] = useState(false);
   const [subjectFilter, setSubjectFilter] = useState<string>("All");
+  // Practice mode hides answers/solutions so the paper can be attempted first.
+  const [practice, setPractice] = useState(false);
+  const [solutionsOpen, setSolutionsOpen] = useState(true);
 
   const load = () => {
     setLoading(true);
@@ -73,6 +76,8 @@ export default function PaperDetailPage() {
   const visibleQuestions =
     subjectFilter === "All" ? questions : questions.filter((q) => q.subject === subjectFilter);
 
+  const flagged = (q: Question) => /(^|\n)Note:/.test(q.explanation ?? "");
+
   return (
     <div className="space-y-6">
       <div>
@@ -81,16 +86,24 @@ export default function PaperDetailPage() {
         </span>
         <h1 className="mt-2 text-2xl font-bold text-slate-900">{paper.title}</h1>
         <p className="mt-1 text-slate-500">
-          Year {paper.year} &middot; {questions.length} questions
+          Year {paper.year} &middot; {questions.length} questions &middot; {paper.subjects.join(", ")}
+          {paper.pdfUrl && (
+            <>
+              {" "}&middot;{" "}
+              <a href={paper.pdfUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                Original PDF
+              </a>
+            </>
+          )}
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-slate-600">Filter by subject:</label>
+      <div className="sticky top-0 z-10 -mx-6 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-6 py-3 backdrop-blur">
+        <label className="text-sm font-medium text-slate-600">Subject:</label>
         <select
           value={subjectFilter}
           onChange={(e) => setSubjectFilter(e.target.value)}
-          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
         >
           <option value="All">All ({questions.length})</option>
           {SUBJECTS.map((s) => {
@@ -102,18 +115,85 @@ export default function PaperDetailPage() {
             ) : null;
           })}
         </select>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={() => setPractice((v) => !v)}
+            aria-pressed={practice}
+            className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
+              practice
+                ? "bg-indigo-600 text-white hover:bg-indigo-500"
+                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            {practice ? "Show answers & solutions" : "Practice mode (hide answers)"}
+          </button>
+          {!practice && (
+            <button
+              onClick={() => setSolutionsOpen((v) => !v)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              {solutionsOpen ? "Collapse solutions" : "Expand solutions"}
+            </button>
+          )}
+        </div>
       </div>
+
+      {questions.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Answer key</h2>
+          <p className="mb-3 mt-0.5 text-xs text-slate-400">Tap a cell to jump to that question.</p>
+          <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10">
+            {questions.map((q) => (
+              <a
+                key={q._id}
+                href={`#q-${q.questionNumber}`}
+                className="flex flex-col items-center rounded border border-slate-200 py-1 font-mono text-xs tabular-nums hover:border-indigo-400"
+              >
+                <span className="text-[10px] text-slate-400">{q.questionNumber}</span>
+                <span
+                  className={`font-semibold ${flagged(q) ? "text-amber-600" : "text-emerald-700"} ${
+                    practice ? "invisible" : ""
+                  }`}
+                >
+                  {q.correctAnswer || "–"}
+                </span>
+              </a>
+            ))}
+          </div>
+          {questions.some(flagged) && (
+            <p className="mt-3 text-xs text-slate-500">
+              <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-amber-500 align-middle" />
+              Amber answers carry a note where the printed paper&apos;s key or options are inconsistent — see the
+              solution.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="space-y-4">
         {visibleQuestions.map((q) => {
           const isEditing = editingId === q._id;
           return (
-            <div key={q._id} className="rounded-lg border border-slate-200 bg-white p-5">
-              <div className="mb-3 flex items-center justify-between text-xs">
-                <div className="flex gap-2">
-                  <span className="rounded bg-slate-100 px-2 py-1 font-semibold text-slate-600">
-                    Q{q.questionNumber}
+            <div
+              key={q._id}
+              id={`q-${q.questionNumber}`}
+              className="scroll-mt-20 rounded-lg border border-slate-200 bg-white p-5"
+            >
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-serif text-xl font-semibold tabular-nums text-indigo-600">
+                    {q.questionNumber}
                   </span>
+                  {q.source && (
+                    <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[11px] tracking-wide text-slate-600">
+                      {q.source}
+                    </span>
+                  )}
+                  {flagged(q) && !practice && (
+                    <span className="rounded bg-amber-50 px-2 py-1 font-mono text-[11px] tracking-wide text-amber-700">
+                      see note
+                    </span>
+                  )}
                   <span className="rounded bg-blue-50 px-2 py-1 font-medium text-blue-700">{q.subject}</span>
                   <span className="rounded bg-slate-50 px-2 py-1 text-slate-500">Section {q.section}</span>
                   <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">{q.difficulty}</span>
@@ -142,7 +222,7 @@ export default function PaperDetailPage() {
               {isEditing ? (
                 <EditForm draft={draft} setDraft={setDraft} onSave={saveEdit} onCancel={cancelEdit} saving={saving} />
               ) : (
-                <ViewOnly question={q} />
+                <ViewOnly question={q} practice={practice} solutionOpen={solutionsOpen} />
               )}
             </div>
           );
@@ -152,7 +232,15 @@ export default function PaperDetailPage() {
   );
 }
 
-function ViewOnly({ question }: { question: Question }) {
+function ViewOnly({
+  question,
+  practice,
+  solutionOpen,
+}: {
+  question: Question;
+  practice: boolean;
+  solutionOpen: boolean;
+}) {
   const options: [OptionKey, string][] = [
     ["A", question.optionA],
     ["B", question.optionB],
@@ -161,7 +249,7 @@ function ViewOnly({ question }: { question: Question }) {
   ];
   return (
     <div>
-      <p className="font-medium text-slate-800">
+      <p className="text-[17px] font-medium leading-relaxed text-slate-800">
         <MathText text={question.questionText} />
       </p>
 
@@ -171,28 +259,39 @@ function ViewOnly({ question }: { question: Question }) {
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {options.map(([key, text]) => {
             const optionImages = question.optionDiagramUrls?.[key] ?? [];
+            const correct = !practice && question.correctAnswer === key;
             return (
               <div
                 key={key}
-                className={`rounded border px-3 py-1.5 text-sm ${
-                  question.correctAnswer === key
-                    ? "border-emerald-400 bg-emerald-50 text-emerald-800"
-                    : "border-slate-200 text-slate-600"
+                className={`flex items-baseline gap-2.5 rounded-md border px-3 py-2 text-[15px] ${
+                  correct ? "border-emerald-400 bg-emerald-50 text-emerald-900" : "border-slate-200 text-slate-700"
                 }`}
               >
-                <strong>{key}.</strong> <MathText text={text} />
-                <Diagrams urls={optionImages} className="mt-1" />
+                <span className={`font-mono text-xs ${correct ? "font-semibold text-emerald-700" : "text-slate-400"}`}>
+                  {key}
+                </span>
+                <span className="min-w-0">
+                  <MathText text={text} />
+                  <Diagrams urls={optionImages} className="mt-1" />
+                </span>
               </div>
             );
           })}
         </div>
       )}
-      {question.answerType !== "MCQ" && (
-        <p className="mt-2 text-sm font-medium text-emerald-700">Answer: {question.correctAnswer}</p>
+
+      {!practice && question.correctAnswer && (
+        <p className="mt-3 font-mono text-xs font-medium text-emerald-700">
+          Correct answer: {question.correctAnswer}
+        </p>
       )}
 
-      {question.explanation && (
-        <Explanation text={question.explanation} diagramUrls={question.explanationDiagramUrls} />
+      {!practice && question.explanation && (
+        <Explanation
+          text={question.explanation}
+          diagramUrls={question.explanationDiagramUrls}
+          open={solutionOpen}
+        />
       )}
     </div>
   );
@@ -250,6 +349,28 @@ function EditForm({
             />
           </div>
         ))}
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-500">Source (e.g. JEE Main 2019)</label>
+        <input
+          value={draft.source ?? ""}
+          onChange={(e) => field("source", e.target.value)}
+          className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm"
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-500">
+          Solution — blank line between paragraphs; LaTeX in \( \) or \[ \]; start a paragraph with
+          &quot;Note:&quot; for a callout
+        </label>
+        <textarea
+          value={draft.explanation ?? ""}
+          onChange={(e) => field("explanation", e.target.value)}
+          rows={8}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">

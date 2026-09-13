@@ -164,10 +164,17 @@ function findBoilerplateLines(events: PdfEvent[]): Set<string> {
   const freq = new Map<string, number>();
   for (const ev of events) {
     if (ev.kind !== "text") continue;
+    // When the extractor says where the line sits, only header/footer lines
+    // qualify: a short phrase like "is equal to" wrapping onto its own line
+    // in several questions is content, however often it repeats.
+    if (ev.edge === false) continue;
     const trimmed = ev.value.trim();
     const norm = trimmed.toLowerCase();
-    if (!norm || norm.length > 40) continue;
-    if (!isFilterableAsBoilerplate(trimmed)) continue;
+    if (!norm || norm.length > 60) continue;
+    // A line known to sit in the header/footer band only has to avoid
+    // looking like a question or option; ": 26-08-2026" has no letters but
+    // is still a running header if it recurs.
+    if (!isFilterableAsBoilerplate(trimmed, ev.edge === true)) continue;
     freq.set(norm, (freq.get(norm) ?? 0) + 1);
   }
   const boilerplate = new Set<string>();
@@ -182,11 +189,12 @@ function findBoilerplateLines(events: PdfEvent[]): Set<string> {
  * recur constantly. Only prose-looking lines carrying no structural marker are
  * ever eligible.
  */
-function isFilterableAsBoilerplate(line: string): boolean {
+function isFilterableAsBoilerplate(line: string, inEdgeBand = false): boolean {
   if (INLINE_ANSWER_RE.test(line)) return false;
   if (matchNumberedLine(line)) return false;
   OPTION_RE.lastIndex = 0;
   if (OPTION_RE.test(line)) return false;
+  if (inEdgeBand) return true;
   const letters = line.replace(/[^A-Za-z]/g, "");
   return letters.length >= 3;
 }
@@ -226,9 +234,16 @@ function findPageEdgeIndices(events: PdfEvent[]): Set<number> {
 function findOptionMarkers(line: string, lastOption: OptionKey | null) {
   const found: { letter: OptionKey; start: number; contentStart: number }[] = [];
   let expectedIndex = lastOption === null ? 0 : OPTION_ORDER.indexOf(lastOption) + 1;
+  // "(A)" inside a formula — cos(180° + A) — is not an option marker.
+  const mathSpans: [number, number][] = [];
+  const MATH_RE = /\\\((?:[\s\S]*?)\\\)/g;
+  let span: RegExpExecArray | null;
+  while ((span = MATH_RE.exec(line)) !== null) mathSpans.push([span.index, span.index + span[0].length]);
   OPTION_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = OPTION_RE.exec(line)) !== null) {
+    const at = m.index;
+    if (mathSpans.some(([a, b]) => at >= a && at < b)) continue;
     const letter = m[1].toUpperCase() as OptionKey;
     if (expectedIndex >= OPTION_ORDER.length || letter !== OPTION_ORDER[expectedIndex]) continue;
     found.push({ letter, start: m.index, contentStart: m.index + m[0].length });
@@ -285,9 +300,9 @@ export function parseCoachingPaper(events: PdfEvent[]): CoachingParseResult {
 
     const raw = ev.value.trim();
     if (!raw) continue;
-    if (raw.length <= 40 && boilerplate.has(raw.toLowerCase())) continue;
+    if (raw.length <= 60 && boilerplate.has(raw.toLowerCase())) continue;
     // Standalone page number at the top/bottom of a page.
-    if (/^\d{1,3}$/.test(raw) && pageEdges.has(evIndex)) continue;
+    if (/^\d{1,3}$/.test(raw) && (pageEdges.has(evIndex) || ev.edge)) continue;
 
     if (/^\(?\s*answer\s*(key|sheet)\s*\)?$/i.test(raw)) {
       flushQ();

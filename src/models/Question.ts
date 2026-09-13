@@ -15,6 +15,7 @@ export interface QuestionDoc extends Document {
   answerType: AnswerType;
   difficulty: Difficulty;
   explanation?: string;
+  source?: string;
   diagramUrls?: string[];
   explanationDiagramUrls?: string[];
   optionDiagramUrls?: { A: string[]; B: string[]; C: string[]; D: string[] };
@@ -38,6 +39,7 @@ const QuestionSchema = new Schema<QuestionDoc>({
   answerType: { type: String, enum: ["MCQ", "Numerical", "Bonus"], default: "MCQ" },
   difficulty: { type: String, enum: ["Easy", "Medium", "Hard"], default: "Medium" },
   explanation: { type: String, default: "" },
+  source: { type: String, default: "" },
   diagramUrls: { type: [String], default: [] },
   explanationDiagramUrls: { type: [String], default: [] },
   optionDiagramUrls: {

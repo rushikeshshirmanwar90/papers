@@ -1,4 +1,5 @@
 import { parseMathNodes, type AccentType, type MathNode, type MathSegment } from "@shared/mathText";
+import { hasLatex, Latex } from "./Latex";
 
 // Glyph drawn above the base letter for each accent type — see the CSS in
 // globals.css (.math-accent) for how it's positioned. Matches the printed
@@ -61,6 +62,8 @@ function MathNodeView({ node }: { node: MathNode }) {
 }
 
 export function MathText({ text }: { text: string }) {
+  // Hand-authored content carries real LaTeX; PDF-extracted text never does.
+  if (hasLatex(text)) return <Latex text={text} />;
   const nodes = parseMathNodes(text);
   return (
     <>

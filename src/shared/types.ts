@@ -52,6 +52,8 @@ export interface Question {
   answerType: AnswerType;
   difficulty: Difficulty;
   explanation?: string;
+  /** Where the question was originally set, e.g. "JEE Main 2019". */
+  source?: string;
   diagramUrls?: string[];
   /** Figures printed inside the worked solution, shown with the explanation. */
   explanationDiagramUrls?: string[];

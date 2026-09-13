@@ -10,14 +10,22 @@ import { reconstructStacks } from "./pdfStacks";
 export interface TextFragment {
   text: string;
   x: number;
+  endX?: number;
 }
 
 export type PdfEvent =
-  | { kind: "text"; value: string; fragments: TextFragment[]; y: number }
+  | {
+      kind: "text";
+      value: string;
+      fragments: TextFragment[];
+      y: number;
+      /** Set by extractors that know the page size: the line sits in the header/footer band. */
+      edge?: boolean;
+    }
   | { kind: "image"; buffer: Buffer; width: number; height: number }
   | { kind: "pagebreak" };
 
-interface TextItem {
+export interface TextItem {
   str: string;
   x: number;
   y: number;
@@ -32,9 +40,9 @@ interface ImagePlacement {
   buffer: Buffer;
 }
 
-type Matrix = [number, number, number, number, number, number];
+export type Matrix = [number, number, number, number, number, number];
 
-function multiply(m: Matrix, base: Matrix): Matrix {
+export function multiply(m: Matrix, base: Matrix): Matrix {
   const [a, b, c, d, e, f] = m;
   const [a2, b2, c2, d2, e2, f2] = base;
   return [
@@ -47,7 +55,7 @@ function multiply(m: Matrix, base: Matrix): Matrix {
   ];
 }
 
-function applyPoint(m: Matrix, x: number, y: number): [number, number] {
+export function applyPoint(m: Matrix, x: number, y: number): [number, number] {
   return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 }
 
@@ -86,7 +94,7 @@ function groupSpans(items: TextItem[], maxGap: number): Span[] {
 // midpoint constantly. So rather than looking for the single widest x-gap
 // (too fragile — gutters can be as narrow as ~15pt), we pick the candidate
 // split line within the central band that the fewest spans straddle.
-function detectColumnBoundary(items: TextItem[], pageWidth: number): number | null {
+export function detectColumnBoundary(items: TextItem[], pageWidth: number): number | null {
   const spans = groupSpans(items, 8);
   if (spans.length < 4) return null;
 
@@ -306,7 +314,7 @@ export async function extractStructuredPdf(buffer: Buffer): Promise<PdfEvent[]> 
 
 // Minimal PNG encoder (no native deps) for the RGBA/RGB/greyscale pixel buffers
 // pdf.js decodes embedded images into.
-function encodePngFromImageData(img: { width: number; height: number; data: Uint8ClampedArray | Uint8Array }): Buffer | null {
+export function encodePngFromImageData(img: { width: number; height: number; data: Uint8ClampedArray | Uint8Array }): Buffer | null {
   const { width, height, data } = img;
   const n = width * height;
   let rgba: Buffer;

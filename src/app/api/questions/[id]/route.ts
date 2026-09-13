@@ -14,6 +14,8 @@ const EDITABLE_FIELDS = [
   "answerType",
   "difficulty",
   "questionNumber",
+  "explanation",
+  "source",
 ] as const;
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
