@@ -77,7 +77,13 @@ interface BigOpItem extends BaseItem {
   upper: Item[];
   lower: Item[];
 }
-type Item = GlyphItem | FracItem | SqrtItem | BigOpItem;
+interface AccentItem extends BaseItem {
+  kind: "accent";
+  /** LaTeX command, e.g. "\\overrightarrow". */
+  cmd: string;
+  base: Item[];
+}
+type Item = GlyphItem | FracItem | SqrtItem | BigOpItem | AccentItem;
 
 const CM_ASCENT = 0.694; // cap height / digit height, in em
 const CM_XHEIGHT = 0.43;
@@ -349,9 +355,71 @@ function assemble(glyphs: Glyph[], rules: Rule[]): Item[] {
     });
   }
 
+  // Accents (\overrightarrow, \vec, \hat, \bar …) are drawn as their own
+  // glyphs a few points above the letter they decorate. Left alone they form
+  // a bogus text line of their own ("− →") between two real lines, which the
+  // parser would then glue onto whichever option or sentence came before.
+  for (const it of items) {
+    if (it.claimed || it.kind !== "glyph" || it.g.font === "text") continue;
+    const cmd = ACCENTS[it.g.str];
+    if (!cmd) continue;
+    // \overrightarrow{AB} is an arrowhead preceded by "−" pieces at the same
+    // height; they extend the arrow's span and are not content.
+    const pieces: Item[] = [it];
+    if (it.g.str === "→") {
+      for (const o of items) {
+        if (o.claimed || o === it || o.kind !== "glyph" || o.g.str !== "−" || o.g.font !== "cmsy") continue;
+        if (Math.abs(o.baseline - it.baseline) <= 0.5 && o.x1 <= it.x2 + 0.5 && o.x2 >= it.x1 - 12) pieces.push(o);
+      }
+    }
+    const span = boxOf(pieces);
+    const mid = (span.x1 + span.x2) / 2;
+    // The decorated glyphs sit under the accent — either inside its span or,
+    // for a zero-width combining glyph such as "⃗", around its position —
+    // and on a baseline a fraction of an em below it: the accent is placed
+    // just above the x-height, never a whole line up.
+    let base = items.filter(
+      (o) =>
+        !o.claimed &&
+        !pieces.includes(o) &&
+        !(o.kind === "glyph" && o.g.font === "text") &&
+        (inSpan(o, span.x1, span.x2, 1) || (mid >= o.x1 - 1 && mid <= o.x2 + 1)) &&
+        it.baseline - o.baseline >= it.size * 0.15 &&
+        it.baseline - o.baseline <= it.size * 0.8
+    );
+    // pdf.js reports a zero-width combining mark ("⃗" over an italic letter)
+    // on the letter's own baseline, at the letter's edge. Attach it to the
+    // letter it overlaps.
+    if (base.length === 0 && span.x2 - span.x1 < 0.5) {
+      base = items.filter(
+        (o) =>
+          !o.claimed &&
+          o !== it &&
+          o.kind === "glyph" &&
+          o.g.font !== "text" &&
+          /^[A-Za-zα-ωΑ-Ω]$/.test(o.g.str) &&
+          Math.abs(o.baseline - it.baseline) < 0.5 &&
+          mid >= o.x1 - 0.5 &&
+          mid <= o.x2 + 0.5
+      );
+    }
+    if (base.length === 0) continue;
+    for (const o of [...pieces, ...base]) o.claimed = true;
+    const box = boxOf([...pieces, ...base]);
+    const dom = dominantBaseline(base);
+    items.push({ kind: "accent", cmd, base, ...box, baseline: dom.baseline, size: dom.size, claimed: false });
+  }
+
   items = items.filter((it) => !it.claimed);
   return items;
 }
+
+// Glyphs TeX places above a letter as an accent, keyed to the command that
+// puts them back. "→" only counts when it is raised above something.
+const ACCENTS: Record<string, string> = {
+  "→": "\\overrightarrow", "⃗": "\\vec", "^": "\\hat", "ˆ": "\\hat", "¯": "\\bar", "ˉ": "\\bar",
+  "˙": "\\dot", "~": "\\tilde", "˜": "\\tilde", "¨": "\\ddot",
+};
 
 // ---------------------------------------------------------------------------
 // Emission: items → LaTeX.
@@ -468,6 +536,13 @@ function emitMath(items: Item[], nested: boolean): string {
 function tidyMath(tex: string): string {
   return tex
     .replace(/\\not\s*=/g, "\\ne")
+    // pdf.js sometimes glues an accent onto the run before it ("= 30ˆ"), so
+    // it reaches here on the baseline with no geometry to attach it by; the
+    // letter after it is the one it decorates.
+    .replace(/ˆ\s*([A-Za-z])/g, "\\hat{$1}")
+    .replace(/⃗\s*([A-Za-z])/g, "\\vec{$1}")
+    .replace(/([A-Za-z])\s*\^\{⃗\}/g, "\\vec{$1}")
+    .replace(/([A-Za-z])\s*\^\{ˆ\}/g, "\\hat{$1}")
     .replace(/(?:\\cdot\s*){3,}/g, "\\cdots ")
     .replace(/(?:\.\s*){3,}/g, "\\ldots ")
     .replace(/\(\s+/g, "(")
@@ -494,14 +569,21 @@ function emitItem(it: Item, nested: boolean): string {
       const hi = it.upper.length ? `^{${emitMath(it.upper, true)}}` : "";
       return `${op}${lo}${hi}`;
     }
+    case "accent":
+      return `${it.cmd}{${emitMath(it.base, true)}}`;
   }
 }
 
 const isMathItem = (it: Item) => it.kind !== "glyph" || isMathGlyph(it.g);
+const MATH_RUN_GAP_EM = 2.2;
 
 /**
  * Turns one line's items into prose with embedded \( … \) maths runs.
- * Adjacent maths items form a single run; prose words separate runs.
+ * Adjacent maths items form a single run; prose words separate runs, and so
+ * does a wide horizontal gap: options are laid out in a grid, so a row of
+ * two wrapped option tails ("q, D → p)      q, D → p)") or of two stacked
+ * numerators ("18      8") is two fragments the parser places by column, not
+ * one formula. TeX never leaves more than a \qquad (2em) inside a formula.
  */
 function emitLine(items: Item[]): { text: string; fragments: { text: string; x: number; endX: number }[] } {
   const sorted = [...items].sort((a, b) => a.x1 - b.x1);
@@ -525,7 +607,11 @@ function emitLine(items: Item[]): { text: string; fragments: { text: string; x: 
       continue;
     }
     const run: Item[] = [];
-    while (i < sorted.length && isMathItem(sorted[i])) run.push(sorted[i++]);
+    while (i < sorted.length && isMathItem(sorted[i])) {
+      const prev = run[run.length - 1];
+      if (prev && sorted[i].x1 - prev.x2 > MATH_RUN_GAP_EM * Math.max(prev.size, sorted[i].size)) break;
+      run.push(sorted[i++]);
+    }
     const last = run[run.length - 1];
     push(`\\(${emitMath(run, false)}\\)`, run[0].x1, last.x2);
   }

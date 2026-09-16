@@ -64,10 +64,17 @@ export function formatTexExplanation(raw: string): string {
   }
   if (cur) logical.push(cur);
 
-  // A logical line that is nothing but one maths run becomes display maths.
+  // A logical line that is nothing but maths runs becomes display maths. The
+  // extractor splits a run at a wide horizontal gap, so a line of working
+  // laid out in two parts ("x = 2      y = 3") is several runs; keep the gap
+  // as a \quad.
   const paragraphs = logical.map((l) => {
-    const only = l.match(/^\s*\\\((.*)\\\)\s*([.,;:])?\s*$/);
-    if (only && !/\\\)/.test(only[1])) return `\\[${only[1].trim()}\\]`;
+    const runs: string[] = [];
+    const rest = l.replace(/\\\(((?:(?!\\\)).)*)\\\)/g, (_, inner: string) => {
+      runs.push(inner.trim());
+      return "";
+    });
+    if (runs.length > 0 && /^\s*[.,;:]?\s*$/.test(rest)) return `\\[${runs.join(" \\quad ")}\\]`;
     return tidyProse(l);
   });
   return paragraphs.join("\n\n");

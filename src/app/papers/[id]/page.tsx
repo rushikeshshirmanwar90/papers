@@ -20,9 +20,6 @@ export default function PaperDetailPage() {
   const [draft, setDraft] = useState<Draft>({});
   const [saving, setSaving] = useState(false);
   const [subjectFilter, setSubjectFilter] = useState<string>("All");
-  // Practice mode hides answers/solutions so the paper can be attempted first.
-  const [practice, setPractice] = useState(false);
-  const [solutionsOpen, setSolutionsOpen] = useState(true);
 
   const load = () => {
     setLoading(true);
@@ -115,27 +112,6 @@ export default function PaperDetailPage() {
             ) : null;
           })}
         </select>
-        <div className="ml-auto flex gap-2">
-          <button
-            onClick={() => setPractice((v) => !v)}
-            aria-pressed={practice}
-            className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
-              practice
-                ? "bg-indigo-600 text-white hover:bg-indigo-500"
-                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            {practice ? "Show answers & solutions" : "Practice mode (hide answers)"}
-          </button>
-          {!practice && (
-            <button
-              onClick={() => setSolutionsOpen((v) => !v)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              {solutionsOpen ? "Collapse solutions" : "Expand solutions"}
-            </button>
-          )}
-        </div>
       </div>
 
       {questions.length > 0 && (
@@ -150,11 +126,7 @@ export default function PaperDetailPage() {
                 className="flex flex-col items-center rounded border border-slate-200 py-1 font-mono text-xs tabular-nums hover:border-indigo-400"
               >
                 <span className="text-[10px] text-slate-400">{q.questionNumber}</span>
-                <span
-                  className={`font-semibold ${flagged(q) ? "text-amber-600" : "text-emerald-700"} ${
-                    practice ? "invisible" : ""
-                  }`}
-                >
+                <span className={`font-semibold ${flagged(q) ? "text-amber-600" : "text-emerald-700"}`}>
                   {q.correctAnswer || "–"}
                 </span>
               </a>
@@ -189,7 +161,7 @@ export default function PaperDetailPage() {
                       {q.source}
                     </span>
                   )}
-                  {flagged(q) && !practice && (
+                  {flagged(q) && (
                     <span className="rounded bg-amber-50 px-2 py-1 font-mono text-[11px] tracking-wide text-amber-700">
                       see note
                     </span>
@@ -222,7 +194,7 @@ export default function PaperDetailPage() {
               {isEditing ? (
                 <EditForm draft={draft} setDraft={setDraft} onSave={saveEdit} onCancel={cancelEdit} saving={saving} />
               ) : (
-                <ViewOnly question={q} practice={practice} solutionOpen={solutionsOpen} />
+                <ViewOnly question={q} />
               )}
             </div>
           );
@@ -232,15 +204,7 @@ export default function PaperDetailPage() {
   );
 }
 
-function ViewOnly({
-  question,
-  practice,
-  solutionOpen,
-}: {
-  question: Question;
-  practice: boolean;
-  solutionOpen: boolean;
-}) {
+function ViewOnly({ question }: { question: Question }) {
   const options: [OptionKey, string][] = [
     ["A", question.optionA],
     ["B", question.optionB],
@@ -259,7 +223,7 @@ function ViewOnly({
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {options.map(([key, text]) => {
             const optionImages = question.optionDiagramUrls?.[key] ?? [];
-            const correct = !practice && question.correctAnswer === key;
+            const correct = question.correctAnswer === key;
             return (
               <div
                 key={key}
@@ -280,17 +244,16 @@ function ViewOnly({
         </div>
       )}
 
-      {!practice && question.correctAnswer && (
+      {question.correctAnswer && (
         <p className="mt-3 font-mono text-xs font-medium text-emerald-700">
           Correct answer: {question.correctAnswer}
         </p>
       )}
 
-      {!practice && question.explanation && (
+      {question.explanation && (
         <Explanation
           text={question.explanation}
           diagramUrls={question.explanationDiagramUrls}
-          open={solutionOpen}
         />
       )}
     </div>

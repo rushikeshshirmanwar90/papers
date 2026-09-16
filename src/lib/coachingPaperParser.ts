@@ -54,8 +54,12 @@ interface QuestionDraft {
   diagrams: Buffer[];
   active: "text" | OptionKey;
   lastOption: OptionKey | null;
-  /** x position each option's content starts at, learned from its marker row. */
-  columns: Partial<Record<OptionKey, number>>;
+  /** Options whose marker has been seen, in any order. */
+  seen: Set<OptionKey>;
+  /** Horizontal span of each option's marker and content start, learned from its marker row. */
+  columns: Partial<Record<OptionKey, OptionColumn>>;
+  /** Options laid out on the most recent marker row — the only ones a wrapped or stacked row can belong to. */
+  rowOptions: OptionKey[];
   /** Unlabelled rows seen since the last marker row — possible numerators. */
   pending: { text: string; fragments: TextFragment[] }[];
 }
@@ -68,20 +72,35 @@ interface SolutionDraft {
   capturing: boolean; // only true once the "Solution:" marker is seen
 }
 
+interface OptionColumn {
+  /** x of the "(A)" marker itself. */
+  x: number;
+  /** x where the option's content starts, when the marker row shows it. */
+  contentX: number;
+}
+
 /**
  * Assigns each fragment of an unlabelled row to the option whose column it sits
  * in. Options are laid out in a grid, so a stacked fraction's numerator and
  * denominator line up horizontally with their own option's marker even though
- * they occupy separate rows.
+ * they occupy separate rows, and a wrapped option's second line starts where
+ * its first line's content did.
+ *
+ * Only the options on the latest marker row are candidates: a row can wrap or
+ * stack only under the markers directly above it, and options sharing a grid
+ * column with an earlier row ("(A)" over "(C)") would otherwise tie.
  *
  * Returns null when the row doesn't look like it belongs to the option grid —
  * either no columns are known yet, or the fragments don't line up with them.
  */
 function distributeByColumn(
   fragments: TextFragment[],
-  columns: Partial<Record<OptionKey, number>>
+  columns: Partial<Record<OptionKey, OptionColumn>>,
+  candidates: OptionKey[]
 ): Partial<Record<OptionKey, string>> | null {
-  const entries = (Object.entries(columns) as [OptionKey, number][]).filter(([, x]) => x !== undefined);
+  const entries = candidates
+    .map((key) => [key, columns[key]] as const)
+    .filter((e): e is readonly [OptionKey, OptionColumn] => e[1] !== undefined);
   if (entries.length < 2 || fragments.length === 0) return null;
 
   const TOLERANCE = 26; // generous: fraction bars sit slightly off their marker
@@ -89,8 +108,10 @@ function distributeByColumn(
   for (const frag of fragments) {
     let bestKey: OptionKey | null = null;
     let bestDist = Infinity;
-    for (const [key, x] of entries) {
-      const dist = Math.abs(frag.x - x);
+    for (const [key, col] of entries) {
+      // Anything between the marker and the content start is squarely in
+      // the column; measure only how far outside that span it starts.
+      const dist = frag.x < col.x ? col.x - frag.x : frag.x > col.contentX ? frag.x - col.contentX : 0;
       if (dist < bestDist) {
         bestDist = dist;
         bestKey = key;
@@ -100,6 +121,24 @@ function distributeByColumn(
     result[bestKey] = (result[bestKey] ? result[bestKey] + " " : "") + frag.text;
   }
   return result;
+}
+
+/**
+ * Locates an option marker's own fragment on its row. Matching any fragment
+ * that merely contains the letter is wrong: option A's content "(A → q, B →
+ * r, …)" contains a "B", and would place option B's column on top of A's.
+ */
+function findMarkerColumn(fragments: TextFragment[], letter: OptionKey): OptionColumn | null {
+  const markerRe = new RegExp(`^\\(?\\s*${letter}\\s*\\)`);
+  const i = fragments.findIndex((f) => markerRe.test(f.text.trim()));
+  if (i === -1) return null;
+  const marker = fragments[i];
+  // The content is the next fragment when the marker stands alone;
+  // otherwise it shares the marker's fragment and starts just after it.
+  const standalone = /^\(?\s*[A-Da-d]\s*\)$/.test(marker.text.trim());
+  const next = standalone ? fragments[i + 1] : undefined;
+  const contentX = next && next.x > marker.x ? next.x : marker.x + Math.max((marker.endX ?? marker.x) - marker.x, 12);
+  return { x: marker.x, contentX };
 }
 
 /**
@@ -226,30 +265,57 @@ function findPageEdgeIndices(events: PdfEvent[]): Set<number> {
 }
 
 /**
- * Finds option markers in a line, accepting only those that continue the
- * A→B→C→D sequence. Without that guard, incidental text such as the "( A )"
- * row labels of a match-the-columns table, or the "2)" inside "x = 4(t − 2)",
- * would be mistaken for real options.
+ * Finds option markers in a line. A marker is accepted when it is the next
+ * letter in A→B→C→D order, or — since the TeX extractor can emit an option
+ * row out of order when a tall bracket or fraction shifts its baseline — when
+ * it is an unseen letter with nothing but whitespace and math spans before it
+ * on the line. Without a guard, incidental text such as the "( A )" row labels
+ * of a match-the-columns table would be mistaken for real options, and prose
+ * like "vectors A) and B)" would be split into options.
  */
-function findOptionMarkers(line: string, lastOption: OptionKey | null) {
+function findOptionMarkers(line: string, seen: ReadonlySet<OptionKey>) {
   const found: { letter: OptionKey; start: number; contentStart: number }[] = [];
-  let expectedIndex = lastOption === null ? 0 : OPTION_ORDER.indexOf(lastOption) + 1;
+  const taken = new Set(seen);
+  const expected = () => OPTION_ORDER.find((k) => !taken.has(k)) ?? null;
   // "(A)" inside a formula — cos(180° + A) — is not an option marker.
   const mathSpans: [number, number][] = [];
   const MATH_RE = /\\\((?:[\s\S]*?)\\\)/g;
   let span: RegExpExecArray | null;
   while ((span = MATH_RE.exec(line)) !== null) mathSpans.push([span.index, span.index + span[0].length]);
+  // Text between the previous accepted marker (or line start) and `at`,
+  // with math spans removed — empty means the marker leads its segment.
+  const leadsSegment = (at: number) => {
+    const from = found.length > 0 ? found[found.length - 1].contentStart : 0;
+    let gap = line.slice(from, at);
+    for (const [a, b] of mathSpans) if (a >= from && b <= at) gap = gap.replace(line.slice(a, b), " ");
+    return gap.trim() === "";
+  };
   OPTION_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = OPTION_RE.exec(line)) !== null) {
     const at = m.index;
     if (mathSpans.some(([a, b]) => at >= a && at < b)) continue;
     const letter = m[1].toUpperCase() as OptionKey;
-    if (expectedIndex >= OPTION_ORDER.length || letter !== OPTION_ORDER[expectedIndex]) continue;
+    if (taken.has(letter)) continue;
+    if (letter !== expected() && !leadsSegment(at)) continue;
     found.push({ letter, start: m.index, contentStart: m.index + m[0].length });
-    expectedIndex++;
+    taken.add(letter);
   }
   return found;
+}
+
+/**
+ * True for a fragment like "\(\bigl[\) \(\bigr]\)": delimiters with nothing
+ * inside. The extractor strands an option's tall brackets on a neighbouring
+ * row when their baseline differs from the option's own; they carry no
+ * content, so they are dropped rather than pasted into the question text.
+ */
+function isBareDelimiters(text: string): boolean {
+  const stripped = text
+    .replace(/\\[()]/g, " ")
+    .replace(/\\(?:[bB]igg?[lrm]?|left|right)\b/g, " ")
+    .replace(/[\s\[\]()|.{}]/g, "");
+  return stripped === "";
 }
 
 export function parseCoachingPaper(events: PdfEvent[]): CoachingParseResult {
@@ -399,29 +465,34 @@ export function parseCoachingPaper(events: PdfEvent[]): CoachingParseResult {
         diagrams: [],
         active: "text",
         lastOption: null,
+        seen: new Set(),
         columns: {},
+        rowOptions: [],
         pending: [],
       };
       continue;
     }
     if (!qDraft) continue;
 
-    const markers = findOptionMarkers(raw, qDraft.lastOption);
+    const markers = findOptionMarkers(raw, qDraft.seen);
     if (markers.length > 0) {
       const preamble = raw.slice(0, markers[0].start).trim();
-      if (preamble) appendToActive(qDraft, preamble);
+      if (preamble && !isBareDelimiters(preamble)) appendToActive(qDraft, preamble);
 
-      // Learn where each option's content sits horizontally.
+      // Learn where each option's marker and content sit horizontally.
+      qDraft.rowOptions = markers.map((m) => m.letter);
       for (const marker of markers) {
-        const frag = ev.fragments.find((f) => f.text.includes(marker.letter));
-        qDraft.columns[marker.letter] = frag ? frag.x : marker.start;
+        qDraft.columns[marker.letter] = findMarkerColumn(ev.fragments, marker.letter) ?? {
+          x: marker.start,
+          contentX: marker.contentStart,
+        };
       }
 
       // The row above a marker row may hold the numerators of stacked
       // fractions, which belong to the options rather than the question text.
       const previous = qDraft.pending.pop();
       if (previous) {
-        const spread = distributeByColumn(previous.fragments, qDraft.columns);
+        const spread = distributeByColumn(previous.fragments, qDraft.columns, qDraft.rowOptions);
         if (spread && looksLikeStackedNumerators(previous.text, spread)) {
           for (const key of OPTION_ORDER) {
             const part = spread[key];
@@ -440,12 +511,13 @@ export function parseCoachingPaper(events: PdfEvent[]): CoachingParseResult {
         if (seg) qDraft.options[key] += (qDraft.options[key] ? " " : "") + seg;
         qDraft.active = key;
         qDraft.lastOption = key;
+        qDraft.seen.add(key);
       }
     } else {
       // Once options have started, an unlabelled row is usually a denominator
       // (or a wrapped option); place its parts by column when they line up.
       const spread =
-        qDraft.lastOption !== null ? distributeByColumn(ev.fragments, qDraft.columns) : null;
+        qDraft.lastOption !== null ? distributeByColumn(ev.fragments, qDraft.columns, qDraft.rowOptions) : null;
       if (spread) {
         for (const key of OPTION_ORDER) {
           const part = spread[key];
