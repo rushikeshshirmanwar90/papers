@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
+import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 import Paper from "@/models/Paper";
 import Question from "@/models/Question";
@@ -10,11 +8,15 @@ import { parseQuestionsFromLines } from "@/lib/questionParser";
 import { extractStructuredPdf } from "@/lib/pdfStructured";
 import { parseCoachingPaper } from "@/lib/coachingPaperParser";
 import { saveDiagrams } from "@/lib/saveDiagrams";
+import { deleteFilesForPaper, saveFile } from "@/lib/storage";
 import { extractTexPdf } from "@/lib/pdfTex";
 import { formatTexExplanation, stripAnswerMarker, tidyProse } from "@/lib/texExplanation";
 import type { ExamType } from "@shared/types";
 
 export const runtime = "nodejs";
+// Parsing a 15-page paper (fonts, images, geometry) can outlast the default
+// serverless limit; 60s is the ceiling on Vercel's hobby plan.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,11 +36,16 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    await mkdir(uploadsDir, { recursive: true });
-    const fileName = `${Date.now()}-${randomUUID().slice(0, 8)}.pdf`;
-    await writeFile(path.join(uploadsDir, fileName), buffer);
-    const pdfUrl = `/uploads/${fileName}`;
+    // The paper's id is fixed up front so the PDF and every diagram can be
+    // stored against it before the Paper document itself exists.
+    const paperId = new Types.ObjectId();
+    await connectDB();
+    const pdfUrl = await saveFile(buffer, {
+      filename: file.name,
+      contentType: "application/pdf",
+      kind: "pdf",
+      paperId,
+    });
 
     // Strict single-column "1. / (A) / Ans. [X]" layout first; if that finds
     // nothing, fall back to the tolerant multi-column coaching-paper parser,
@@ -82,12 +89,12 @@ export async function POST(req: NextRequest) {
       questionRecords = [];
       for (const q of fallback.questions) {
         const [diagramUrls, optionA, optionB, optionC, optionD, explanationUrls] = await Promise.all([
-          saveDiagrams(q.diagrams),
-          saveDiagrams(q.optionDiagrams.A),
-          saveDiagrams(q.optionDiagrams.B),
-          saveDiagrams(q.optionDiagrams.C),
-          saveDiagrams(q.optionDiagrams.D),
-          saveDiagrams(q.explanationDiagrams),
+          saveDiagrams(q.diagrams, paperId),
+          saveDiagrams(q.optionDiagrams.A, paperId),
+          saveDiagrams(q.optionDiagrams.B, paperId),
+          saveDiagrams(q.optionDiagrams.C, paperId),
+          saveDiagrams(q.optionDiagrams.D, paperId),
+          saveDiagrams(q.explanationDiagrams, paperId),
         ]);
         questionRecords.push({
           questionNumber: q.questionNumber,
@@ -109,6 +116,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (questions.length === 0) {
+      await deleteFilesForPaper(paperId).catch(() => {});
       return NextResponse.json(
         {
           error:
@@ -118,9 +126,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
-
     const paper = await Paper.create({
+      _id: paperId,
       title: title || file.name.replace(/\.pdf$/i, ""),
       examType,
       year,

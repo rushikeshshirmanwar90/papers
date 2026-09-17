@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import Paper from "@/models/Paper";
 import Question from "@/models/Question";
 import Attempt from "@/models/Attempt";
+import { deleteFilesForPaper } from "@/lib/storage";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   await connectDB();
@@ -21,6 +22,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
   await Question.deleteMany({ paperId: params.id });
   await Attempt.deleteMany({ paperId: params.id });
+  await deleteFilesForPaper(params.id);
 
   return NextResponse.json({ success: true });
 }
