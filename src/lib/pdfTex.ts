@@ -15,6 +15,7 @@ import {
   type TextItem,
 } from "./pdfStructured";
 import { classifyFont, layoutTexColumn, type Glyph, type Rule } from "./texMath";
+import { loadPdfjs } from "./pdfjsNode";
 
 interface ImagePlacement {
   x: number;
@@ -139,7 +140,7 @@ function splitAtGaps(fragments: Frag[], gap = 40): Frag[][] {
 }
 
 export async function extractTexPdf(buffer: Buffer): Promise<TexExtraction> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfjs();
   const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer), useSystemFonts: true, disableFontFace: true })
     .promise;
   const events: PdfEvent[] = [];

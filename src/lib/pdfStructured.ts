@@ -6,6 +6,7 @@
 
 import { mergeCombiningMarks } from "./pdfMarks";
 import { reconstructStacks } from "./pdfStacks";
+import { loadPdfjs } from "./pdfjsNode";
 
 export interface TextFragment {
   text: string;
@@ -201,7 +202,7 @@ function wrapInlineRoots(line: { y: number; text: string; fragments: TextFragmen
 }
 
 export async function extractStructuredPdf(buffer: Buffer): Promise<PdfEvent[]> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfjs();
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     useSystemFonts: true,

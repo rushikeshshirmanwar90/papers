@@ -1,11 +1,12 @@
 import { mergeCombiningMarks } from "./pdfMarks";
+import { loadPdfjs } from "./pdfjsNode";
 
 // Extracts plain text lines from a PDF buffer using pdf.js's legacy Node build.
 // Text items are grouped into lines by their vertical (y) position so that
 // question/option/answer markers that pdf.js would otherwise flatten into one
 // long string stay on separate lines, which the question parser depends on.
 export async function extractLinesFromPdf(buffer: Buffer): Promise<string[]> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfjs();
 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
