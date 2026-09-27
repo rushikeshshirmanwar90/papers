@@ -24,6 +24,12 @@ export async function POST(req: NextRequest) {
     const file = formData.get("pdf");
     const title = (formData.get("title") as string) || "";
     const examType = (formData.get("examType") as ExamType) || "JEE";
+    const examCategory = (formData.get("examCategory") as string) || "JEE/NEET";
+    const standard = (formData.get("standard") as string) || "11th";
+    const subject = (formData.get("subject") as string) || "";
+    const chapter = (formData.get("chapter") as string) || "";
+    const topic = (formData.get("topic") as string) || "";
+    const difficulty = (formData.get("difficulty") as string) || "Medium";
     const yearRaw = formData.get("year") as string;
     const year = yearRaw ? parseInt(yearRaw, 10) : new Date().getFullYear();
 
@@ -130,14 +136,28 @@ export async function POST(req: NextRequest) {
       _id: paperId,
       title: title || file.name.replace(/\.pdf$/i, ""),
       examType,
+      examCategory,
+      standard,
+      chapter,
+      topic,
+      difficulty,
       year,
-      subjects: subjectsFound,
+      subjects: subjectsFound.length > 0 ? subjectsFound : (subject ? [subject] : ["Physics"]),
       totalQuestions: questions.length,
       pdfUrl,
     });
 
     const questionDocs = await Question.insertMany(
-      questionRecords.map((q) => ({ ...q, paperId: paper._id }))
+      questionRecords.map((q) => ({
+        ...q,
+        paperId: paper._id,
+        examCategory: q.examCategory || examCategory,
+        standard: q.standard || standard,
+        chapter: q.chapter || chapter,
+        topic: q.topic || topic,
+        difficulty: q.difficulty || difficulty,
+        subject: q.subject || subject || "Physics",
+      }))
     );
 
     return NextResponse.json(

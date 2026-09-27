@@ -4,19 +4,24 @@
 
 export type ExamType = "JEE" | "NEET";
 
+export type ExamCategory = "Foundation" | "JEE/NEET";
+
+export type Standard = "9th" | "10th" | "11th" | "12th";
+
 export type Subject =
   | "Physics"
   | "Chemistry"
   | "Mathematics"
   | "Biology"
   | "Botany"
-  | "Zoology";
+  | "Zoology"
+  | "Science";
 
 export type Section = "A" | "B";
 
 export type AnswerType = "MCQ" | "Numerical" | "Bonus";
 
-export type Difficulty = "Easy" | "Medium" | "Hard";
+export type Difficulty = "Easy" | "Medium" | "Hard" | "Mid";
 
 export type OptionKey = "A" | "B" | "C" | "D";
 
@@ -29,6 +34,11 @@ export interface Paper {
   _id: string;
   title: string;
   examType: ExamType;
+  examCategory?: ExamCategory;
+  standard?: Standard;
+  chapter?: string;
+  topic?: string;
+  difficulty?: Difficulty;
   year: number;
   subjects: Subject[];
   totalQuestions: number;
@@ -42,6 +52,10 @@ export interface Question {
   paperId: string;
   questionNumber: number;
   subject: Subject;
+  examCategory?: ExamCategory;
+  standard?: Standard;
+  chapter?: string;
+  topic?: string;
   section: Section;
   questionText: string;
   optionA: string;

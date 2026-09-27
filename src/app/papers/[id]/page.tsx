@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import type { Difficulty, OptionKey, Paper, Question, Section, Subject, AnswerType } from "@shared/types";
 import { SUBJECTS } from "@shared/types";
@@ -20,6 +20,8 @@ export default function PaperDetailPage() {
   const [draft, setDraft] = useState<Draft>({});
   const [saving, setSaving] = useState(false);
   const [subjectFilter, setSubjectFilter] = useState<string>("All");
+  // Question currently at the top of the viewport, highlighted in the answer key.
+  const [activeNumber, setActiveNumber] = useState<number | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -33,6 +35,23 @@ export default function PaperDetailPage() {
   };
 
   useEffect(load, [paperId]);
+
+  useEffect(() => {
+    if (loading) return;
+    const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-question-number]"));
+    if (cards.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const onScreen = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (onScreen[0]) setActiveNumber(Number((onScreen[0].target as HTMLElement).dataset.questionNumber));
+      },
+      { rootMargin: "-20% 0px -60% 0px" }
+    );
+    cards.forEach((c) => observer.observe(c));
+    return () => observer.disconnect();
+  }, [loading, subjectFilter, questions.length]);
 
   const startEdit = (q: Question) => {
     setEditingId(q._id);
@@ -75,131 +94,187 @@ export default function PaperDetailPage() {
 
   const flagged = (q: Question) => /(^|\n)Note:/.test(q.explanation ?? "");
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
-          {paper.examType}
-        </span>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900">{paper.title}</h1>
-        <p className="mt-1 text-slate-500">
-          Year {paper.year} &middot; {questions.length} questions &middot; {paper.subjects.join(", ")}
-          {paper.pdfUrl && (
-            <>
-              {" "}&middot;{" "}
-              <a href={paper.pdfUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-                Original PDF
-              </a>
-            </>
-          )}
-        </p>
-      </div>
+  const answerKey = (
+    <AnswerKey
+      questions={questions}
+      flagged={flagged}
+      activeNumber={activeNumber}
+      dimmed={(q) => subjectFilter !== "All" && q.subject !== subjectFilter}
+    />
+  );
 
-      <div className="sticky top-0 z-10 -mx-6 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-6 py-3 backdrop-blur">
-        <label className="text-sm font-medium text-slate-600">Subject:</label>
-        <select
-          value={subjectFilter}
-          onChange={(e) => setSubjectFilter(e.target.value)}
-          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
-        >
-          <option value="All">All ({questions.length})</option>
-          {SUBJECTS.map((s) => {
-            const count = questions.filter((q) => q.subject === s).length;
-            return count > 0 ? (
-              <option key={s} value={s}>
-                {s} ({count})
-              </option>
-            ) : null;
+  return (
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-6">
+      <div className="min-w-0 space-y-6">
+        <div>
+          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+            {paper.examType}
+          </span>
+          <h1 className="mt-2 text-2xl font-bold text-slate-900">{paper.title}</h1>
+          <p className="mt-1 text-slate-500">
+            Year {paper.year} &middot; {questions.length} questions &middot; {paper.subjects.join(", ")}
+            {paper.pdfUrl && (
+              <>
+                {" "}&middot;{" "}
+                <a href={paper.pdfUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                  Original PDF
+                </a>
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/95 py-3 backdrop-blur">
+          <label className="text-sm font-medium text-slate-600">Subject:</label>
+          <select
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
+          >
+            <option value="All">All ({questions.length})</option>
+            {SUBJECTS.map((s) => {
+              const count = questions.filter((q) => q.subject === s).length;
+              return count > 0 ? (
+                <option key={s} value={s}>
+                  {s} ({count})
+                </option>
+              ) : null;
+            })}
+          </select>
+        </div>
+
+        {questions.length > 0 && (
+          <details className="rounded-lg border border-slate-200 bg-white lg:hidden">
+            <summary className="cursor-pointer select-none px-5 py-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Answer key
+            </summary>
+            <div className="border-t border-slate-200 px-5 py-4">{answerKey}</div>
+          </details>
+        )}
+
+        <div className="space-y-4">
+          {visibleQuestions.map((q) => {
+            const isEditing = editingId === q._id;
+            return (
+              <div
+                key={q._id}
+                id={`q-${q.questionNumber}`}
+                data-question-number={q.questionNumber}
+                className="scroll-mt-20 rounded-lg border border-slate-200 bg-white p-5"
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-serif text-xl font-semibold tabular-nums text-indigo-600">
+                      {q.questionNumber}
+                    </span>
+                    {q.source && (
+                      <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[11px] tracking-wide text-slate-600">
+                        {q.source}
+                      </span>
+                    )}
+                    {flagged(q) && (
+                      <span className="rounded bg-amber-50 px-2 py-1 font-mono text-[11px] tracking-wide text-amber-700">
+                        see note
+                      </span>
+                    )}
+                    <span className="rounded bg-blue-50 px-2 py-1 font-medium text-blue-700">{q.subject}</span>
+                    <span className="rounded bg-slate-50 px-2 py-1 text-slate-500">Section {q.section}</span>
+                    <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">{q.difficulty}</span>
+                    <span className="rounded bg-purple-50 px-2 py-1 text-purple-700">{q.answerType}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {!isEditing && (
+                      <>
+                        <button
+                          onClick={() => startEdit(q)}
+                          className="font-medium text-indigo-600 hover:underline"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => deleteQuestion(q._id)}
+                          className="font-medium text-red-500 hover:underline"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {isEditing ? (
+                  <EditForm draft={draft} setDraft={setDraft} onSave={saveEdit} onCancel={cancelEdit} saving={saving} />
+                ) : (
+                  <ViewOnly question={q} />
+                )}
+              </div>
+            );
           })}
-        </select>
+        </div>
       </div>
 
       {questions.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Answer key</h2>
-          <p className="mb-3 mt-0.5 text-xs text-slate-400">Tap a cell to jump to that question.</p>
-          <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10">
-            {questions.map((q) => (
-              <a
-                key={q._id}
-                href={`#q-${q.questionNumber}`}
-                className="flex flex-col items-center rounded border border-slate-200 py-1 font-mono text-xs tabular-nums hover:border-indigo-400"
-              >
-                <span className="text-[10px] text-slate-400">{q.questionNumber}</span>
-                <span className={`font-semibold ${flagged(q) ? "text-amber-600" : "text-emerald-700"}`}>
-                  {q.correctAnswer || "–"}
-                </span>
-              </a>
-            ))}
+        <aside className="hidden lg:block">
+          <div className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Answer key</h2>
+            <p className="mb-3 mt-0.5 text-xs text-slate-400">Click a cell to jump to that question.</p>
+            {answerKey}
           </div>
-          {questions.some(flagged) && (
-            <p className="mt-3 text-xs text-slate-500">
-              <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-amber-500 align-middle" />
-              Amber answers carry a note where the printed paper&apos;s key or options are inconsistent — see the
-              solution.
-            </p>
-          )}
-        </div>
+        </aside>
       )}
+    </div>
+  );
+}
 
-      <div className="space-y-4">
-        {visibleQuestions.map((q) => {
-          const isEditing = editingId === q._id;
+/**
+ * Grid of question numbers and their keyed answers. The question currently
+ * in view is outlined; questions hidden by the subject filter are dimmed.
+ */
+function AnswerKey({
+  questions,
+  flagged,
+  activeNumber,
+  dimmed,
+}: {
+  questions: Question[];
+  flagged: (q: Question) => boolean;
+  activeNumber: number | null;
+  dimmed: (q: Question) => boolean;
+}) {
+  const answered = useMemo(() => questions.filter((q) => q.correctAnswer).length, [questions]);
+  const anyFlagged = questions.some(flagged);
+  return (
+    <div>
+      <div className="grid grid-cols-5 gap-1.5">
+        {questions.map((q) => {
+          const active = q.questionNumber === activeNumber;
           return (
-            <div
+            <a
               key={q._id}
-              id={`q-${q.questionNumber}`}
-              className="scroll-mt-20 rounded-lg border border-slate-200 bg-white p-5"
+              href={`#q-${q.questionNumber}`}
+              aria-current={active ? "true" : undefined}
+              className={`flex flex-col items-center rounded border py-1 font-mono text-xs tabular-nums transition-colors hover:border-indigo-400 ${
+                active ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500" : "border-slate-200"
+              } ${dimmed(q) ? "opacity-40" : ""}`}
             >
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-serif text-xl font-semibold tabular-nums text-indigo-600">
-                    {q.questionNumber}
-                  </span>
-                  {q.source && (
-                    <span className="rounded bg-slate-100 px-2 py-1 font-mono text-[11px] tracking-wide text-slate-600">
-                      {q.source}
-                    </span>
-                  )}
-                  {flagged(q) && (
-                    <span className="rounded bg-amber-50 px-2 py-1 font-mono text-[11px] tracking-wide text-amber-700">
-                      see note
-                    </span>
-                  )}
-                  <span className="rounded bg-blue-50 px-2 py-1 font-medium text-blue-700">{q.subject}</span>
-                  <span className="rounded bg-slate-50 px-2 py-1 text-slate-500">Section {q.section}</span>
-                  <span className="rounded bg-amber-50 px-2 py-1 text-amber-700">{q.difficulty}</span>
-                  <span className="rounded bg-purple-50 px-2 py-1 text-purple-700">{q.answerType}</span>
-                </div>
-                <div className="flex gap-2">
-                  {!isEditing && (
-                    <>
-                      <button
-                        onClick={() => startEdit(q)}
-                        className="font-medium text-indigo-600 hover:underline"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => deleteQuestion(q._id)}
-                        className="font-medium text-red-500 hover:underline"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {isEditing ? (
-                <EditForm draft={draft} setDraft={setDraft} onSave={saveEdit} onCancel={cancelEdit} saving={saving} />
-              ) : (
-                <ViewOnly question={q} />
-              )}
-            </div>
+              <span className="text-[10px] text-slate-400">{q.questionNumber}</span>
+              <span className={`font-semibold ${flagged(q) ? "text-amber-600" : "text-emerald-700"}`}>
+                {q.correctAnswer || "–"}
+              </span>
+            </a>
           );
         })}
       </div>
+      <p className="mt-3 text-xs text-slate-500">
+        {answered}/{questions.length} keyed
+      </p>
+      {anyFlagged && (
+        <p className="mt-2 text-xs text-slate-500">
+          <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-amber-500 align-middle" />
+          Amber answers carry a note where the printed paper&apos;s key or options are inconsistent — see the
+          solution.
+        </p>
+      )}
     </div>
   );
 }
