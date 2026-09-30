@@ -5,6 +5,9 @@ import Question from "@/models/Question";
 import Attempt from "@/models/Attempt";
 import Student from "@/models/Student";
 
+// Counts change with every upload; never serve a build-time snapshot.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   await connectDB();
 

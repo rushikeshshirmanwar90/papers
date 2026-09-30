@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import Question from "@/models/Question";
+import { buildFilter } from "@/lib/queryFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -9,37 +10,7 @@ export async function GET(req: NextRequest) {
     await connectDB();
     const { searchParams } = new URL(req.url);
 
-    const filter: Record<string, unknown> = {};
-
-    const examCategory = searchParams.get("examCategory");
-    if (examCategory && examCategory !== "All") {
-      filter.examCategory = examCategory;
-    }
-
-    const standard = searchParams.get("standard");
-    if (standard && standard !== "All") {
-      filter.standard = standard;
-    }
-
-    const subject = searchParams.get("subject");
-    if (subject && subject !== "All") {
-      filter.subject = subject;
-    }
-
-    const chapter = searchParams.get("chapter");
-    if (chapter && chapter !== "All") {
-      filter.chapter = { $regex: new RegExp(chapter, "i") };
-    }
-
-    const topic = searchParams.get("topic");
-    if (topic && topic !== "All") {
-      filter.topic = { $regex: new RegExp(topic, "i") };
-    }
-
-    const level = searchParams.get("difficulty") || searchParams.get("level");
-    if (level && level !== "All") {
-      filter.difficulty = level;
-    }
+    const filter = buildFilter(searchParams, "subject");
 
     const paperId = searchParams.get("paperId");
     if (paperId) {
