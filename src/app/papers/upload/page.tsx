@@ -140,6 +140,7 @@ export default function UploadPaperPage() {
             >
               <option value="JEE">JEE</option>
               <option value="NEET">NEET</option>
+              <option value="Foundation">Foundation</option>
             </select>
           </div>
           <div>
