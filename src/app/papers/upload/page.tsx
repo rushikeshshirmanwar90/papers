@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 export default function UploadPaperPage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [examType, setExamType] = useState<"JEE" | "NEET">("JEE");
+  const [examType, setExamType] = useState<"JEE" | "NEET" | "Foundation">("JEE");
   const [examCategory, setExamCategory] = useState<"Foundation" | "JEE/NEET">("JEE/NEET");
   const [standard, setStandard] = useState<"9th" | "10th" | "11th" | "12th">("11th");
   const [subject, setSubject] = useState<string>("Physics");
@@ -135,7 +135,7 @@ export default function UploadPaperPage() {
             <label className="mb-1 block text-sm font-medium text-slate-700">Exam Type</label>
             <select
               value={examType}
-              onChange={(e) => setExamType(e.target.value as "JEE" | "NEET")}
+              onChange={(e) => setExamType(e.target.value as "JEE" | "NEET" | "Foundation")}
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             >
               <option value="JEE">JEE</option>

@@ -2,7 +2,7 @@
 // this copy lets /web build standalone without reaching outside its own
 // directory; /mobile still imports the original at /shared/types.ts).
 
-export type ExamType = "JEE" | "NEET";
+export type ExamType = "JEE" | "NEET" | "Foundation";
 
 export type ExamCategory = "Foundation" | "JEE/NEET";
 

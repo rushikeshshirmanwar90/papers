@@ -18,7 +18,7 @@ export interface PaperDoc extends Document {
 
 const PaperSchema = new Schema<PaperDoc>({
   title: { type: String, required: true, trim: true },
-  examType: { type: String, enum: ["JEE", "NEET"], required: true },
+  examType: { type: String, enum: ["JEE", "NEET", "Foundation"], required: true },
   examCategory: { type: String, enum: ["Foundation", "JEE/NEET"], default: "JEE/NEET" },
   standard: { type: String, enum: ["9th", "10th", "11th", "12th"], default: "11th" },
   chapter: { type: String, default: "" },
