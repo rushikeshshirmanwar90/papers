@@ -5,6 +5,11 @@ import { buildFilter } from "@/lib/queryFilters";
 
 export const dynamic = "force-dynamic";
 
+// Page size: the question bank holds hundreds of thousands of questions, and
+// an unbounded "everything" response would be hundreds of megabytes.
+const DEFAULT_LIMIT = 1000;
+const MAX_LIMIT = 5000;
+
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export async function GET(req: NextRequest) {
@@ -43,11 +48,31 @@ export async function GET(req: NextRequest) {
       filter.paperId = paperId;
     }
 
-    const questions = await Question.find(filter).sort({ questionNumber: 1 }).lean();
+    // Descriptive questions have no options to pick from, so practice and
+    // exam screens only get them on request: ?answerType=Descriptive for
+    // just those, ?answerType=all for everything.
+    const answerType = searchParams.get("answerType")?.trim();
+    if (!answerType) filter.answerType = { $ne: "Descriptive" };
+    else if (answerType !== "all") filter.answerType = answerType;
+
+    const limit = Math.min(Math.max(parseInt(searchParams.get("limit") ?? "", 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
+    const page = Math.max(parseInt(searchParams.get("page") ?? "", 10) || 1, 1);
+
+    const [questions, total] = await Promise.all([
+      Question.find(filter)
+        .sort({ paperId: 1, questionNumber: 1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Question.countDocuments(filter),
+    ]);
 
     return NextResponse.json({
       success: true,
       count: questions.length,
+      total,
+      page,
+      limit,
       questions,
     });
   } catch (err) {

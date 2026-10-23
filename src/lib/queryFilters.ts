@@ -17,6 +17,15 @@ const given = (params: URLSearchParams, key: string) => {
   return value && value !== "All" ? value : null;
 };
 
+// Chapter, topic and level may repeat (?chapter=A&chapter=B) to match any of them.
+const givenAll = (params: URLSearchParams, key: string) =>
+  params
+    .getAll(key)
+    .map((value) => value.trim())
+    .filter((value) => value && value !== "All");
+
+const exactly = (value: string) => new RegExp(`^${escapeRegex(value)}$`, "i");
+
 /**
  * Builds a Mongo filter from the request's query params. `subjectField` is
  * "subject" on questions and "subjects" (an array) on papers.
@@ -38,14 +47,15 @@ export function buildFilter(
 
   // Chapter and topic come from the dropdowns as exact values; match them
   // whole (case-insensitive) so "ch1" doesn't also pick up "ch10".
-  const chapter = given(params, "chapter");
-  if (chapter) filter.chapter = { $regex: new RegExp(`^${escapeRegex(chapter)}$`, "i") };
+  const chapters = givenAll(params, "chapter");
+  if (chapters.length) filter.chapter = { $in: chapters.map(exactly) };
 
-  const topic = given(params, "topic");
-  if (topic) filter.topic = { $regex: new RegExp(`^${escapeRegex(topic)}$`, "i") };
+  const topics = givenAll(params, "topic");
+  if (topics.length) filter.topic = { $in: topics.map(exactly) };
 
-  const level = given(params, "difficulty") ?? given(params, "level");
-  if (level) filter.difficulty = { $in: LEVEL_ALIASES[level] ?? [level] };
+  const difficulties = givenAll(params, "difficulty");
+  const levels = difficulties.length ? difficulties : givenAll(params, "level");
+  if (levels.length) filter.difficulty = { $in: levels.flatMap((level) => LEVEL_ALIASES[level] ?? [level]) };
 
   return filter;
 }

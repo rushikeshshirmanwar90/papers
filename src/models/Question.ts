@@ -26,7 +26,7 @@ export interface QuestionDoc extends Document {
 }
 
 const QuestionSchema = new Schema<QuestionDoc>({
-  paperId: { type: Schema.Types.ObjectId, ref: "Paper", required: true, index: true },
+  paperId: { type: Schema.Types.ObjectId, ref: "Paper", required: true },
   questionNumber: { type: Number, required: true },
   subject: {
     type: String,
@@ -44,8 +44,8 @@ const QuestionSchema = new Schema<QuestionDoc>({
   optionC: { type: String, default: "" },
   optionD: { type: String, default: "" },
   correctAnswer: { type: String, default: "" },
-  answerType: { type: String, enum: ["MCQ", "Numerical", "Bonus"], default: "MCQ" },
-  difficulty: { type: String, enum: ["Easy", "Medium", "Hard", "Mid"], default: "Medium" },
+  answerType: { type: String, enum: ["MCQ", "Numerical", "Bonus", "Descriptive"], default: "MCQ" },
+  difficulty: { type: String, enum: ["Easy", "Medium", "Hard"], default: "Medium" },
   explanation: { type: String, default: "" },
   source: { type: String, default: "" },
   diagramUrls: { type: [String], default: [] },
@@ -63,5 +63,12 @@ const QuestionSchema = new Schema<QuestionDoc>({
     default: () => ({ A: [], B: [], C: [], D: [] }),
   },
 });
+
+// A paper's questions in order; per-paper subject counts (/api/papers) read
+// straight from the index; the filters the apps search by. The Vedclass
+// extractor (extractor/papers_db.py) creates the same three.
+QuestionSchema.index({ paperId: 1, questionNumber: 1 });
+QuestionSchema.index({ paperId: 1, subject: 1 });
+QuestionSchema.index({ standard: 1, subject: 1, chapter: 1, topic: 1 });
 
 export default models.Question || model<QuestionDoc>("Question", QuestionSchema);

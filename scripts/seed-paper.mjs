@@ -20,7 +20,12 @@ if (!process.env.MONGODB_URI) {
 
 const { paper, questions } = JSON.parse(await readFile(file, "utf8"));
 
-await mongoose.connect(process.env.MONGODB_URI);
+// Same database the app uses (src/lib/db.ts): MONGODB_DB, else one named in
+// the URI, else "pcmb".
+const namesDb = /^mongodb(\+srv)?:\/\/[^/]+\/[^/?]+/.test(process.env.MONGODB_URI);
+await mongoose.connect(process.env.MONGODB_URI, {
+  dbName: process.env.MONGODB_DB || (namesDb ? undefined : "pcmb"),
+});
 // Same collection names the app's models resolve to (Mongoose 9 maps the
 // "Paper" model to a collection called "paper", not "papers").
 const collectionFor = (modelName) => mongoose.connection.collection(mongoose.pluralize()(modelName));

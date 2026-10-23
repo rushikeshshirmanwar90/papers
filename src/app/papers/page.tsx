@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Paper } from "@shared/types";
 
+// Uploaded papers link their PDF; papers loaded from Vedclass link the topic's page.
+const isPdf = (url: string) => /^\/api\/files\/|\.pdf(\?|$)/i.test(url);
+
 export default function PapersPage() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +94,7 @@ export default function PapersPage() {
                   rel="noopener noreferrer"
                   className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  View PDF
+                  {isPdf(paper.pdfUrl) ? "View PDF" : "Source page"}
                 </a>
                 <button
                   onClick={() => handleDelete(paper._id)}

@@ -24,6 +24,12 @@ const nonEmpty = (values: unknown[]) =>
 // chapter and topic lists to what actually exists under that selection, so
 // the apps' dropdowns only offer choices that return questions. Every
 // question carries its paper's chapter/topic, so questions alone are enough.
+//
+// chapterCounts and topicCounts say how many questions each one holds, so a
+// teacher can see where the questions are. They count what /api/questions
+// returns by default, i.e. everything but Descriptive questions.
+// chapterTopics lists each chapter's topics, for picking topics across
+// several chapters; ?chapter may repeat to narrow topics to several.
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   try {
@@ -34,25 +40,51 @@ export async function GET(req: NextRequest) {
     scope.delete("topic");
     scope.delete("level");
     scope.delete("difficulty");
-    const chapterFilter = buildFilter(scope, "subject");
+    const chosenChapters = new Set(
+      searchParams
+        .getAll("chapter")
+        .map((value) => value.trim().toLowerCase())
+        .filter((value) => value && value !== "all")
+    );
 
-    const topicScope = new URLSearchParams(scope);
-    const chapter = searchParams.get("chapter");
-    if (chapter) topicScope.set("chapter", chapter);
-    const topicFilter = buildFilter(topicScope, "subject");
-
-    const [chapters, topics, subjects] = await Promise.all([
-      Question.distinct("chapter", chapterFilter),
-      Question.distinct("topic", topicFilter),
+    // One pass over the selection gives every chapter, every topic, and both counts.
+    const [groups, subjects] = await Promise.all([
+      Question.aggregate<{ _id: { chapter?: string; topic?: string }; count: number }>([
+        { $match: buildFilter(scope, "subject") },
+        {
+          $group: {
+            _id: { chapter: "$chapter", topic: "$topic" },
+            count: { $sum: { $cond: [{ $eq: ["$answerType", "Descriptive"] }, 0, 1] } },
+          },
+        },
+      ]),
       Question.distinct("subject"),
     ]);
+
+    const chapterCounts: Record<string, number> = {};
+    const topicCounts: Record<string, number> = {};
+    const chapterTopics: Record<string, string[]> = {};
+    for (const { _id, count } of groups) {
+      const chapterName = _id.chapter?.trim();
+      const topicName = _id.topic?.trim();
+      if (chapterName) chapterCounts[chapterName] = (chapterCounts[chapterName] ?? 0) + count;
+      if (chapterName && topicName) (chapterTopics[chapterName] ??= []).push(topicName);
+      // Topics are narrowed to the chosen chapters, matched the way buildFilter matches them.
+      if (topicName && (!chosenChapters.size || chosenChapters.has(chapterName?.toLowerCase() ?? ""))) {
+        topicCounts[topicName] = (topicCounts[topicName] ?? 0) + count;
+      }
+    }
+    for (const name of Object.keys(chapterTopics)) chapterTopics[name] = nonEmpty(chapterTopics[name]);
 
     return NextResponse.json({
       examCategories: EXAM_CATEGORIES,
       standards: STANDARDS,
       subjects: nonEmpty([...subjects, ...BASE_SUBJECTS]),
-      chapters: nonEmpty(chapters),
-      topics: nonEmpty(topics),
+      chapters: nonEmpty(Object.keys(chapterCounts)),
+      topics: nonEmpty(Object.keys(topicCounts)),
+      chapterCounts,
+      topicCounts,
+      chapterTopics,
       levels: LEVELS,
     });
   } catch (err) {

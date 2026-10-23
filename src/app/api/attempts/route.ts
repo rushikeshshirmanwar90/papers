@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "studentId, paperId and answers are required" }, { status: 400 });
   }
 
-  const questions = await Question.find({ paperId }).sort({ questionNumber: 1 });
+  // The same questions the attempt was given: descriptive ones are never scored.
+  const questions = await Question.find({ paperId, answerType: { $ne: "Descriptive" } }).sort({ questionNumber: 1 });
   const { review, score, correctCount, wrongCount, skippedCount, totalQuestions } = buildReview(
     questions,
     answers

@@ -11,7 +11,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const paper = await Paper.findById(params.id).lean();
   if (!paper) return NextResponse.json({ error: "Paper not found" }, { status: 404 });
 
-  const questions = await Question.find({ paperId: params.id })
+  // Descriptive questions can't be answered by picking an option.
+  const questions = await Question.find({ paperId: params.id, answerType: { $ne: "Descriptive" } })
     .sort({ questionNumber: 1 })
     .select("-correctAnswer -explanation -explanationDiagramUrls")
     .lean();

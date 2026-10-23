@@ -12,18 +12,21 @@ export async function GET(req: NextRequest) {
 
   const papers = await Paper.find(filter).sort({ uploadedDate: -1 }).lean();
 
-  const papersWithBreakdown = await Promise.all(
-    papers.map(async (paper) => {
-      const breakdown = await Question.aggregate([
-        { $match: { paperId: paper._id } },
-        { $group: { _id: "$subject", count: { $sum: 1 } } },
-      ]);
-      return {
-        ...paper,
-        subjectBreakdown: breakdown.map((b) => ({ subject: b._id, count: b.count })),
-      };
-    })
-  );
+  // One grouping for every paper rather than one query per paper: with the
+  // whole question bank loaded there are thousands of papers. It reads only
+  // the { paperId, subject } index.
+  const breakdown = await Question.aggregate([
+    { $match: { paperId: { $in: papers.map((p) => p._id) } } },
+    { $group: { _id: { paperId: "$paperId", subject: "$subject" }, count: { $sum: 1 } } },
+  ]);
+  const byPaper = new Map<string, { subject: string; count: number }[]>();
+  for (const b of breakdown) {
+    const key = String(b._id.paperId);
+    if (!byPaper.has(key)) byPaper.set(key, []);
+    byPaper.get(key)!.push({ subject: b._id.subject, count: b.count });
+  }
 
-  return NextResponse.json(papersWithBreakdown);
+  return NextResponse.json(
+    papers.map((paper) => ({ ...paper, subjectBreakdown: byPaper.get(String(paper._id)) ?? [] }))
+  );
 }

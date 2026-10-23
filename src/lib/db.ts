@@ -2,6 +2,13 @@ import mongoose from "mongoose";
 
 const MONGODB_URI = process.env.MONGODB_URI as string;
 
+// The database to use: MONGODB_DB, else one named in the connection string's
+// path, else "pcmb" — where the Vedclass extractor loads the question bank
+// (extractor/papers_db.py picks it the same way).
+const DB_NAME =
+  process.env.MONGODB_DB ||
+  (/^mongodb(\+srv)?:\/\/[^/]+\/[^/?]+/.test(MONGODB_URI ?? "") ? undefined : "pcmb");
+
 if (!MONGODB_URI) {
   throw new Error(
     "Missing MONGODB_URI environment variable. Set it in web/.env.local"
@@ -28,6 +35,7 @@ export async function connectDB(): Promise<typeof mongoose> {
   if (!cache.promise) {
     cache.promise = mongoose.connect(MONGODB_URI, {
       bufferCommands: false,
+      dbName: DB_NAME,
     });
   }
 

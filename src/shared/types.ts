@@ -19,7 +19,9 @@ export type Subject =
 
 export type Section = "A" | "B";
 
-export type AnswerType = "MCQ" | "Numerical" | "Bonus";
+// "Descriptive": a written-answer question with no options or answer key;
+// its worked answer is the explanation. Never part of a scored attempt.
+export type AnswerType = "MCQ" | "Numerical" | "Bonus" | "Descriptive";
 
 export type Difficulty = "Easy" | "Medium" | "Hard" | "Mid";
 

@@ -13,7 +13,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const attempt = await Attempt.findById(params.id).lean();
   if (!attempt) return NextResponse.json({ error: "Attempt not found" }, { status: 404 });
 
-  const questions = await Question.find({ paperId: attempt.paperId }).sort({ questionNumber: 1 });
+  const questions = await Question.find({ paperId: attempt.paperId, answerType: { $ne: "Descriptive" } }).sort({
+    questionNumber: 1,
+  });
   const { review } = buildReview(
     questions,
     attempt.answers.map((a: GivenAnswerDoc) => ({ questionId: String(a.questionId), selected: a.selected }))

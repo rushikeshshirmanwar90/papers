@@ -13,6 +13,10 @@ API used by the `/mobile` Expo app.
    MONGODB_URI=mongodb://127.0.0.1:27017/pcmb_exam_reader
    ```
 
+   The app uses the database named in that URI. If the URI names none, it uses
+   `MONGODB_DB`, else `pcmb` — the database the Vedclass extractor
+   (`../extractor`, "Load into database") fills with the question bank.
+
 3. Install dependencies and run the dev server:
 
    ```bash
@@ -31,7 +35,9 @@ API used by the `/mobile` Expo app.
   marker).
 - Options: `(A) option text` through `(D)`.
 - Answers: `Ans. [A]`, `Ans. [42]`, or `Ans. [Bonus]` — determines whether the
-  question is stored as `MCQ`, `Numerical`, or `Bonus`.
+  question is stored as `MCQ`, `Numerical`, or `Bonus`. (Questions loaded by the
+  Vedclass extractor can also be `Descriptive`: no options, the worked answer
+  as the explanation.)
 
 See `src/lib/pdfText.ts` (pdf.js line extraction) and
 `src/lib/questionParser.ts` (the actual parsing state machine).
@@ -43,7 +49,8 @@ See `src/lib/pdfText.ts` (pdf.js line extraction) and
 | `/api/papers/upload` | POST | Upload a PDF (`multipart/form-data`: `pdf`, `title`, `examType`, `year`), extract & store questions |
 | `/api/papers` | GET | List papers with subject breakdown |
 | `/api/papers/:id` | GET / DELETE | Paper + its questions / delete paper |
-| `/api/papers/:id/attempt-questions` | GET | Questions with `correctAnswer` withheld (used by mobile during an attempt) |
+| `/api/papers/:id/attempt-questions` | GET | Questions with `correctAnswer` withheld (used by mobile during an attempt); descriptive questions left out |
+| `/api/questions` | GET | Search questions by `examCategory`, `standard`, `subject`, `chapter`, `topic`, `level`, `search`, `year`, `paperId`. Paged: `limit` (default 1000, max 5000) and `page`; the response carries `total`. Descriptive questions only with `answerType=Descriptive` (or `answerType=all`) |
 | `/api/questions/:id` | PATCH / DELETE | Edit or delete a single question |
 | `/api/dashboard` | GET | Aggregate stats for the dashboard |
 | `/api/students` | POST / GET | Find-or-create a student by email (mobile login) / list students |

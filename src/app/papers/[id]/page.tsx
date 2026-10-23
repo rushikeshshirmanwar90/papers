@@ -117,7 +117,7 @@ export default function PaperDetailPage() {
               <>
                 {" "}&middot;{" "}
                 <a href={paper.pdfUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-                  Original PDF
+                  {/^\/api\/files\/|\.pdf(\?|$)/i.test(paper.pdfUrl) ? "Original PDF" : "Source page"}
                 </a>
               </>
             )}
@@ -242,6 +242,8 @@ function AnswerKey({
   dimmed: (q: Question) => boolean;
 }) {
   const answered = useMemo(() => questions.filter((q) => q.correctAnswer).length, [questions]);
+  // Descriptive questions have nothing to key.
+  const keyable = useMemo(() => questions.filter((q) => q.answerType !== "Descriptive").length, [questions]);
   const anyFlagged = questions.some(flagged);
   return (
     <div>
@@ -266,7 +268,7 @@ function AnswerKey({
         })}
       </div>
       <p className="mt-3 text-xs text-slate-500">
-        {answered}/{questions.length} keyed
+        {answered}/{keyable} keyed
       </p>
       {anyFlagged && (
         <p className="mt-2 text-xs text-slate-500">
@@ -288,7 +290,8 @@ function ViewOnly({ question }: { question: Question }) {
   ];
   return (
     <div>
-      <p className="text-[17px] font-medium leading-relaxed text-slate-800">
+      {/* pre-line: a question's line breaks (lists, statements, sub-parts) are part of it. */}
+      <p className="whitespace-pre-line text-[17px] font-medium leading-relaxed text-slate-800">
         <MathText text={question.questionText} />
       </p>
 
@@ -309,7 +312,7 @@ function ViewOnly({ question }: { question: Question }) {
                 <span className={`font-mono text-xs ${correct ? "font-semibold text-emerald-700" : "text-slate-400"}`}>
                   {key}
                 </span>
-                <span className="min-w-0">
+                <span className="min-w-0 whitespace-pre-line">
                   <MathText text={text} />
                   <Diagrams urls={optionImages} className="mt-1" />
                 </span>
@@ -447,6 +450,7 @@ function EditForm({
             <option value="MCQ">MCQ</option>
             <option value="Numerical">Numerical</option>
             <option value="Bonus">Bonus</option>
+            <option value="Descriptive">Descriptive</option>
           </select>
         </div>
         <div>
