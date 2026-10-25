@@ -3,6 +3,8 @@ import { badRequest, isObjectId, readJson, route, text } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
 import { batchFor } from "@/lib/teaching";
 import { readQuestions, readWhen, testSummaries } from "@/lib/tests";
+import { Types } from "mongoose";
+import TestAttempt from "@/models/TestAttempt";
 import TestRoom, { type TestRoomDoc } from "@/models/TestRoom";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +23,19 @@ export const GET = route(async (req) => {
   // Students only see tests once they open.
   if (session.role === "student") filter.opensAt = { $lte: new Date() };
   const tests = (await TestRoom.find(filter).select("-questions.explanation").sort({ opensAt: -1 }).limit(200)) as TestRoomDoc[];
-  return { tests: await testSummaries(tests) };
+  const summaries = await testSummaries(tests);
+  if (session.role !== "student") return { tests: summaries };
+
+  // A student also sees where they are with each test.
+  const attempts = await TestAttempt.find({ studentId: session.user._id, testId: { $in: tests.map((t) => t._id) } })
+    .select("testId score submittedAt")
+    .lean<{ testId: Types.ObjectId; score: number; submittedAt: Date | null }[]>();
+  return {
+    tests: summaries.map((t) => {
+      const a = attempts.find((x) => String(x.testId) === t.id);
+      return { ...t, mine: a ? { state: a.submittedAt ? "submitted" : "in-progress", score: a.submittedAt ? a.score : null } : null };
+    }),
+  };
 });
 
 const number = (value: unknown, fallback: number, min: number, max: number, label: string) => {

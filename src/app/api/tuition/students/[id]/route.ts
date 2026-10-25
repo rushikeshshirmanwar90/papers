@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { email, oneOf, readJson, route, text } from "@/lib/http";
 import { STANDARDS, TRACKS } from "@/lib/school";
 import { batchNames, findMember, readBatchId, studentOut } from "@/lib/tuition";
+import PracticeAnswer from "@/models/PracticeAnswer";
 import TestAttempt from "@/models/TestAttempt";
 import User from "@/models/User";
 
@@ -38,11 +39,12 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   return { student: studentOut(student, await batchNames(tuitionId)) };
 });
 
-/** Removes the student, their login and their test attempts. */
+/** Removes the student, their login, test attempts and practice answers. */
 export const DELETE = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const student = await findMember(tuitionId, params.id, "student");
   await TestAttempt.deleteMany({ studentId: student._id });
+  await PracticeAnswer.deleteMany({ studentId: student._id });
   await User.deleteOne({ _id: student._id });
   return { ok: true };
 });

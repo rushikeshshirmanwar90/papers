@@ -16,7 +16,7 @@ export interface SyllabusChapter {
 }
 
 // Question bank names for a subject: Biology papers may be split into Botany and Zoology.
-const BANK_SUBJECTS: Record<SchoolSubject, string[]> = {
+export const BANK_SUBJECTS: Record<SchoolSubject, string[]> = {
   Physics: ["Physics"],
   Chemistry: ["Chemistry"],
   Mathematics: ["Mathematics"],

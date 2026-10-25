@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { HttpError, badRequest, readJson, route, text } from "@/lib/http";
+import { attemptOut, currentAttempt, questionsFor } from "@/lib/attempts";
 import { maxScoreOf, mustEdit, readWhen, statusOf, testFor, testSummaries } from "@/lib/tests";
 import TestAttempt from "@/models/TestAttempt";
 import User from "@/models/User";
@@ -12,11 +13,27 @@ type Ctx = { params: { id: string } };
 /**
  * A test with its questions and answers, and every student of the batch with
  * their result (or that they haven't taken it), for the tuition and teachers.
+ * Students get their own view (below).
  */
 export const GET = route<Ctx>(async (req, { params }) => {
   const session = await requireUser(req);
-  if (session.role === "student") throw new HttpError(403, "Open the test from your Tests tab.");
   const { test, canEdit } = await testFor(session, params.id);
+
+  // A student sees the test, their attempt, and the questions: without
+  // answers while they're taking it, with answers once submitted or closed.
+  if (session.role === "student") {
+    if (statusOf(test) === "scheduled") throw new HttpError(404, "This test was not found.");
+    const attempt = await currentAttempt(test, session);
+    const submitted = !!attempt?.submittedAt;
+    // Closed: answers for those who never started; anyone mid-test finishes first.
+    const reveal = submitted || (statusOf(test) === "closed" && !attempt);
+    return {
+      test: (await testSummaries([test]))[0],
+      attempt: attemptOut(test, attempt),
+      // Before starting, only the summary; the questions come with the attempt.
+      questions: attempt || reveal ? questionsFor(test, reveal) : [],
+    };
+  }
 
   const [students, attempts] = await Promise.all([
     User.find({ tuitionId: session.tuitionId, role: "student", batchId: test.batchId }).select("name").sort({ name: 1 }).lean<{ _id: Types.ObjectId; name: string }[]>(),
