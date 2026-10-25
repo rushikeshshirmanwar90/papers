@@ -64,6 +64,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("[question-paper-pdf] failed:", error);
-    return NextResponse.json({ error: "Could not make the PDF. Try again." }, { status: 500 });
+    // `detail` is the underlying error, so a failure can be traced without the server logs.
+    const detail = error instanceof Error ? error.message.slice(0, 500) : String(error);
+    return NextResponse.json({ error: "Could not make the PDF. Try again.", detail }, { status: 500 });
   }
 }
