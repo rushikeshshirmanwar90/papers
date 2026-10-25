@@ -3,6 +3,7 @@ import { email, listOf, readJson, route, text } from "@/lib/http";
 import { SUBJECTS } from "@/lib/school";
 import { findMember, teacherOut } from "@/lib/tuition";
 import Batch, { type BatchDoc } from "@/models/Batch";
+import TimetableEntry from "@/models/TimetableEntry";
 import User from "@/models/User";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,8 @@ export const DELETE = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const teacher = await findMember(tuitionId, params.id, "teacher");
   await Batch.updateMany({ tuitionId }, { $pull: { teachers: { teacherId: teacher._id } } });
+  // Their weekly classes go; tests they set stay, for the students' results.
+  await TimetableEntry.deleteMany({ tuitionId, teacherId: teacher._id });
   await User.deleteOne({ _id: teacher._id });
   return { ok: true };
 });
