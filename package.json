@@ -17,6 +17,8 @@
     "@sparticuz/chromium": "153.0.0",
     "@types/katex": "^0.16.8",
     "autoprefixer": "10.5.4",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.13",
     "katex": "^0.18.7",
     "mongodb-memory-server": "^11.2.0",
     "mongoose": "^9.9.4",
