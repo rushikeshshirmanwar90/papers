@@ -85,46 +85,6 @@ export type QuestionForAttempt = Omit<
   "correctAnswer" | "explanation" | "explanationDiagramUrls"
 >;
 
-export interface Student {
-  _id: string;
-  name: string;
-  email: string;
-  targetExam: ExamType;
-  joinedDate: string;
-}
-
-export interface GivenAnswer {
-  questionId: string;
-  selected: OptionKey | string | null; // null/omitted = skipped
-}
-
-export interface AnsweredReview extends GivenAnswer {
-  correctAnswer: string;
-  isCorrect: boolean;
-  isSkipped: boolean;
-  marksAwarded: number;
-  question: Question;
-}
-
-export interface Attempt {
-  _id: string;
-  studentId: string;
-  paperId: string;
-  answers: GivenAnswer[];
-  score: number;
-  correctCount: number;
-  wrongCount: number;
-  skippedCount: number;
-  totalQuestions: number;
-  timeTaken: number; // seconds
-  attemptedDate: string;
-}
-
-export interface AttemptResult extends Attempt {
-  review: AnsweredReview[];
-  paper?: Paper;
-}
-
 export interface DashboardStats {
   totalPapers: number;
   totalQuestions: number;
@@ -132,13 +92,6 @@ export interface DashboardStats {
   totalStudents: number;
   papersByExamType: { examType: ExamType; count: number }[];
 }
-
-// Marking scheme applied when scoring an attempt.
-export const MARKING_SCHEME = {
-  CORRECT: 4,
-  WRONG: -1,
-  SKIPPED: 0,
-} as const;
 
 export const SUBJECTS: Subject[] = [
   "Physics",
