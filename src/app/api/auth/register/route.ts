@@ -1,5 +1,6 @@
 import { hashPassword, publicUser, signToken } from "@/lib/auth";
 import { HttpError, email, password, readJson, route, text } from "@/lib/http";
+import { sendCode } from "@/lib/email-codes";
 import User, { type UserDoc } from "@/models/User";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 /**
  * Anyone creates an account: { name, email, phone?, password }. It has no
  * role or tuition until a tuition accepts their join request; they're logged
- * in straight away.
+ * in straight away and sent a code to verify their email.
  */
 export const POST = route(async (req) => {
   const body = await readJson(req);
@@ -26,5 +27,12 @@ export const POST = route(async (req) => {
     tuitionId: null,
     lastLoginAt: new Date(),
   })) as UserDoc;
-  return { token: await signToken(user), user: await publicUser(user) };
+  // The account exists either way; if the email fails, they can resend it.
+  let emailSent = true;
+  try {
+    await sendCode(user.email, user.name, "verify-email");
+  } catch {
+    emailSent = false;
+  }
+  return { token: await signToken(user), user: await publicUser(user), emailSent };
 });

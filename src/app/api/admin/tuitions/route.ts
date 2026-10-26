@@ -64,6 +64,7 @@ export const POST = route(async (req) => {
       email: loginEmail,
       passwordHash: await hashPassword(pass),
       role: "tuition",
+      emailVerified: true,
       name,
       phone: tuition.phone,
       tuitionId: tuition._id,

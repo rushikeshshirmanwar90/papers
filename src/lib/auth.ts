@@ -129,6 +129,7 @@ export async function publicUser(user: UserDoc) {
     email: user.email,
     /** null until a tuition accepts them as a student or teacher. */
     role: user.role ?? null,
+    emailVerified: user.emailVerified ?? false,
     name: user.name,
     phone: user.phone,
     tuition: { id: user.tuitionId ? String(user.tuitionId) : "", name: tuition?.name ?? "" },

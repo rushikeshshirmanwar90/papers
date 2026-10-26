@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 export const POST = route(async (req) => {
   const { user } = await requireAccount(req);
   if (user.tuitionId) throw new HttpError(400, "You're already part of a tuition.");
+  if (!user.emailVerified) throw new HttpError(403, "Verify your email first.");
   const body = await readJson(req);
   const tuition = await tuitionByCode(body.code);
   if (!tuition) {

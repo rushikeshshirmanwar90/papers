@@ -37,6 +37,7 @@ export const POST = route(async (req) => {
   const body = await readJson(req);
   const student = (await User.create({
     role: "student",
+    emailVerified: true,
     tuitionId,
     name: text(body, "name", { required: true, max: 100, label: "the student's name" }),
     email: email(body),

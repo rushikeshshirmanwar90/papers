@@ -16,6 +16,8 @@ export interface UserDoc extends Document {
   phone: string;
   tuitionId: Types.ObjectId | null;
   active: boolean;
+  /** Proved by a code sent to the email; accounts made by a tuition or admin start verified. */
+  emailVerified: boolean;
   /** Raised on a password change or reset, which signs out every device. */
   tokenVersion: number;
   failedLogins: number;
@@ -55,6 +57,7 @@ const UserSchema = new Schema<UserDoc>(
     phone: { type: String, default: "", trim: true },
     tuitionId: { type: Schema.Types.ObjectId, ref: "Tuition", default: null, index: true },
     active: { type: Boolean, default: true },
+    emailVerified: { type: Boolean, default: false },
     tokenVersion: { type: Number, default: 0 },
     failedLogins: { type: Number, default: 0, select: false },
     lockedUntil: { type: Date, default: null, select: false },
