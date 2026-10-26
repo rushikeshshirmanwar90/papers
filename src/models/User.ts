@@ -14,6 +14,8 @@ export interface UserDoc extends Document {
   phone: string;
   tuitionId: Types.ObjectId;
   active: boolean;
+  /** A teacher who signed up with a join code and isn't approved yet. */
+  pending: boolean;
   /** Raised on a password change or reset, which signs out every device. */
   tokenVersion: number;
   failedLogins: number;
@@ -53,6 +55,7 @@ const UserSchema = new Schema<UserDoc>(
     phone: { type: String, default: "", trim: true },
     tuitionId: { type: Schema.Types.ObjectId, ref: "Tuition", required: true, index: true },
     active: { type: Boolean, default: true },
+    pending: { type: Boolean, default: false },
     tokenVersion: { type: Number, default: 0 },
     failedLogins: { type: Number, default: 0, select: false },
     lockedUntil: { type: Date, default: null, select: false },

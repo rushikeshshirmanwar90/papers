@@ -15,7 +15,7 @@ export const GET = route(async (req) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const [students, teachers, batches, counts, names] = await Promise.all([
     User.countDocuments({ tuitionId, role: "student" }),
-    User.countDocuments({ tuitionId, role: "teacher" }),
+    User.countDocuments({ tuitionId, role: "teacher", pending: { $ne: true } }),
     Batch.find({ tuitionId }).sort({ name: 1 }) as Promise<BatchDoc[]>,
     studentCounts(tuitionId),
     teacherNames(tuitionId),

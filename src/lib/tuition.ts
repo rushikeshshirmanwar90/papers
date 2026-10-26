@@ -54,8 +54,8 @@ export async function readBatchTeachers(value: unknown, tuitionId: string, subje
     return { teacherId: new Types.ObjectId(entry.teacherId), subject };
   });
   const ids = [...new Set(entries.map((e) => String(e.teacherId)))];
-  const found = await User.countDocuments({ _id: { $in: ids }, tuitionId, role: "teacher" });
-  if (found !== ids.length) throw badRequest("One of the teachers isn't part of this tuition.");
+  const found = await User.countDocuments({ _id: { $in: ids }, tuitionId, role: "teacher", pending: { $ne: true } });
+  if (found !== ids.length) throw badRequest("One of the teachers isn't part of this tuition (or isn't approved yet).");
   // One teacher per subject.
   const seen = new Set<string>();
   return entries.filter((e) => (seen.has(e.subject) ? false : (seen.add(e.subject), true)));
@@ -152,6 +152,8 @@ export function teacherOut(teacher: UserDoc, batches: BatchDoc[]) {
     phone: teacher.phone,
     subjects: teacher.subjects,
     active: teacher.active,
+    pending: teacher.pending ?? false,
+    createdAt: teacher.createdAt,
     lastLoginAt: teacher.lastLoginAt,
     batches: batches.flatMap((b) =>
       b.teachers.filter((t) => String(t.teacherId) === id).map((t) => ({ id: String(b._id), name: b.name, subject: t.subject }))

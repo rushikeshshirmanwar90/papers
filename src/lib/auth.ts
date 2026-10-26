@@ -62,6 +62,7 @@ export async function checkLogin(email: string, password: string): Promise<UserD
     throw new HttpError(401, "Wrong email or password.");
   }
   if (!user.active) throw new HttpError(403, "This account has been turned off. Ask your tuition.");
+  if (user.pending) throw new HttpError(403, "Your tuition hasn't approved your account yet. Ask them to approve it on their Teachers tab.");
   if (!(await Tuition.exists({ _id: user.tuitionId, active: true }))) {
     throw new HttpError(403, "This tuition's account is turned off.");
   }
@@ -94,7 +95,7 @@ export async function requireUser(req: NextRequest, ...roles: Role[]): Promise<S
   }
 
   const user = payload.sub ? await User.findById(payload.sub) : null;
-  if (!user || !user.active || user.tokenVersion !== payload.v) {
+  if (!user || !user.active || user.pending || user.tokenVersion !== payload.v) {
     throw new HttpError(401, "Your login has expired. Log in again.");
   }
   if (!(await Tuition.exists({ _id: user.tuitionId, active: true }))) {
