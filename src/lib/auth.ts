@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from "crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { NextRequest } from "next/server";
@@ -105,18 +104,6 @@ export async function requireUser(req: NextRequest, ...roles: Role[]): Promise<S
     throw new HttpError(403, "Your account can't do this.");
   }
   return { user, userId: String(user._id), role: user.role, tuitionId: String(user.tuitionId) };
-}
-
-/** For the Admin app's requests: the X-Admin-Key header must match ADMIN_API_KEY. */
-export function requireAdminKey(req: NextRequest) {
-  const expected = process.env.ADMIN_API_KEY;
-  if (!expected || expected.length < 24) {
-    throw new HttpError(503, "Admin access isn't set up on the server.");
-  }
-  const given = req.headers.get("x-admin-key") ?? "";
-  // Hashing first gives equal lengths, which timingSafeEqual needs.
-  const digest = (value: string) => createHash("sha256").update(value).digest();
-  if (!timingSafeEqual(digest(given), digest(expected))) throw new HttpError(401, "Wrong admin key.");
 }
 
 /** What the app gets to know about a user. */

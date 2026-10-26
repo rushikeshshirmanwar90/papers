@@ -1,22 +1,27 @@
 import mongoose from "mongoose";
-import { hashPassword, requireAdminKey } from "@/lib/auth";
+import { requireAdmin } from "@/lib/admin";
+import { hashPassword } from "@/lib/auth";
 import { email, password, readJson, route, text } from "@/lib/http";
+import Batch from "@/models/Batch";
 import Tuition from "@/models/Tuition";
 import User from "@/models/User";
 
 export const dynamic = "force-dynamic";
 
-// For the Admin web app (not built yet; scripts/create-tuition.mjs stands in):
-// every request needs the X-Admin-Key header to match ADMIN_API_KEY.
+// For the admin console (session cookie) and scripts/create-tuition.mjs
+// (X-Admin-Key header matching ADMIN_API_KEY).
 
 /** Every tuition, newest first, with its login email and how many people it has. */
 export const GET = route(async (req) => {
-  requireAdminKey(req);
-  const tuitions = await Tuition.find().sort({ createdAt: -1 }).lean();
+  await requireAdmin(req);
+  const q = req.nextUrl.searchParams.get("q")?.trim().slice(0, 60);
+  const filter = q ? { name: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } : {};
+  const tuitions = await Tuition.find(filter).sort({ createdAt: -1 }).lean();
   const counts = await User.aggregate<{ _id: { t: mongoose.Types.ObjectId; r: string }; n: number }>([
     { $group: { _id: { t: "$tuitionId", r: "$role" }, n: { $sum: 1 } } },
   ]);
   const owners = await User.find({ role: "tuition" }).select("tuitionId email").lean();
+  const batchCounts = await Batch.aggregate<{ _id: mongoose.Types.ObjectId; n: number }>([{ $group: { _id: "$tuitionId", n: { $sum: 1 } } }]);
   return {
     tuitions: tuitions.map((t) => {
       const count = (role: string) => counts.find((c) => String(c._id.t) === String(t._id) && c._id.r === role)?.n ?? 0;
@@ -30,6 +35,7 @@ export const GET = route(async (req) => {
         loginEmail: owners.find((o) => String(o.tuitionId) === String(t._id))?.email ?? null,
         teachers: count("teacher"),
         students: count("student"),
+        batches: batchCounts.find((b) => String(b._id) === String(t._id))?.n ?? 0,
         createdAt: t.createdAt,
       };
     }),
@@ -41,7 +47,7 @@ export const GET = route(async (req) => {
  * { name, address?, phone?, loginEmail, password }
  */
 export const POST = route(async (req) => {
-  requireAdminKey(req);
+  await requireAdmin(req);
   const body = await readJson(req);
   const name = text(body, "name", { required: true, max: 120, label: "the tuition's name" })!;
   const loginEmail = email(body, "loginEmail");
