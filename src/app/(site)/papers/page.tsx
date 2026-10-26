@@ -23,7 +23,8 @@ export default function PapersPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this paper and all its questions? This cannot be undone.")) return;
-    await fetch(`/api/papers/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/papers/${id}`, { method: "DELETE" });
+    if (!res.ok) alert((await res.json().catch(() => null))?.error || "Couldn't delete the paper.");
     load();
   };
 

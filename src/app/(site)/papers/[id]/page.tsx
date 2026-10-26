@@ -72,7 +72,11 @@ export default function PaperDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
-      const updated = await res.json();
+      const updated = await res.json().catch(() => null);
+      if (!res.ok || !updated) {
+        alert(updated?.error || "Couldn't save the question.");
+        return;
+      }
       setQuestions((prev) => prev.map((q) => (q._id === editingId ? updated : q)));
       cancelEdit();
     } finally {
@@ -82,7 +86,11 @@ export default function PaperDetailPage() {
 
   const deleteQuestion = async (id: string) => {
     if (!confirm("Delete this question?")) return;
-    await fetch(`/api/questions/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/questions/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      alert((await res.json().catch(() => null))?.error || "Couldn't delete the question.");
+      return;
+    }
     setQuestions((prev) => prev.filter((q) => q._id !== id));
   };
 
