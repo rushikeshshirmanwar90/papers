@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { HttpError, isObjectId, oneOf, readJson, route, text } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
+import { membersOf, pushToUsers } from "@/lib/push";
 import Announcement, { ANNOUNCEMENT_KINDS, type AnnouncementDoc } from "@/models/Announcement";
 import Batch from "@/models/Batch";
 import User from "@/models/User";
@@ -73,5 +74,15 @@ export const POST = route(async (req) => {
     body: text(body, "body", { max: 2000 }) ?? "",
     authorId: session.user._id,
   })) as AnnouncementDoc;
+
+  const people = await membersOf(session.tuitionId, batchIds.length ? batchIds : "all", ["student", "teacher"]);
+  await pushToUsers(
+    people.filter((id) => String(id) !== session.userId),
+    {
+      title: announcement.kind === "schedule" ? `Schedule: ${announcement.title}` : announcement.title,
+      body: announcement.body || `From ${session.user.name}`,
+      data: { tab: "home", kind: "announcement" },
+    }
+  );
   return { announcement: (await out([announcement], session.tuitionId))[0] };
 });

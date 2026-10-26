@@ -69,3 +69,15 @@ export async function entriesOut(session: Session, entries: TimetableEntryDoc[])
     };
   });
 }
+
+/** Tells the batch's students their timetable changed (once an hour at most). */
+export async function announceTimetableChange(session: Session, batchId: Types.ObjectId, subject: string) {
+  const { membersOf, pushOnce } = await import("@/lib/push");
+  const batch = await Batch.findById(batchId).select("name").lean<{ name: string }>();
+  const hour = new Date().toISOString().slice(0, 13);
+  await pushOnce(`timetable:${batchId}:${hour}`, await membersOf(session.tuitionId, [batchId], ["student"]), {
+    title: "Timetable updated",
+    body: `${subject} classes for ${batch?.name ?? "your batch"} changed. Check this week's timetable.`,
+    data: { tab: "home", kind: "timetable" },
+  });
+}

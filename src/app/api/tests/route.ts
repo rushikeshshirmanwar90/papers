@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { badRequest, isObjectId, readJson, route, text } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
+import { membersOf, pushToUsers } from "@/lib/push";
 import { batchFor } from "@/lib/teaching";
 import { readQuestions, readWhen, testSummaries } from "@/lib/tests";
 import { Types } from "mongoose";
@@ -71,5 +72,14 @@ export const POST = route(async (req) => {
     opensAt,
     closesAt,
   })) as TestRoomDoc;
+
+  const opensNow = test.opensAt.getTime() <= Date.now() + 60 * 1000;
+  await pushToUsers(await membersOf(session.tuitionId, [batch._id], ["student"]), {
+    title: opensNow ? `New test: ${test.title}` : `Test coming up: ${test.title}`,
+    body: opensNow
+      ? `${test.questions.length} questions · ${test.durationMinutes} min. Open it from your Tests tab.`
+      : `Opens ${test.opensAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}.`,
+    data: { tab: "tests", kind: "test", testId: String(test._id) },
+  });
   return { test: (await testSummaries([test]))[0] };
 });

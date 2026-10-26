@@ -1,6 +1,6 @@
 import { requireUser, type Session } from "@/lib/auth";
 import { HttpError, isObjectId, notFound, readJson, route } from "@/lib/http";
-import { checkClashes, entriesOut, readEntry } from "@/lib/timetable";
+import { announceTimetableChange, checkClashes, entriesOut, readEntry } from "@/lib/timetable";
 import TimetableEntry, { type TimetableEntryDoc } from "@/models/TimetableEntry";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,7 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   await checkClashes(fields, entry._id as never);
   entry.set(fields);
   await entry.save();
+  await announceTimetableChange(session, entry.batchId, entry.subject);
   return { entry: (await entriesOut(session, [entry]))[0] };
 });
 
@@ -30,5 +31,6 @@ export const DELETE = route<Ctx>(async (req, { params }) => {
   const session = await requireUser(req, "tuition", "teacher");
   const entry = await editable(session, params.id);
   await entry.deleteOne();
+  await announceTimetableChange(session, entry.batchId, entry.subject);
   return { ok: true };
 });

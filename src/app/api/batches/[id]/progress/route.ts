@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { badRequest, oneOf, readJson, route } from "@/lib/http";
 import { STANDARDS, SUBJECTS, type SchoolSubject } from "@/lib/school";
 import { standardsOf, syllabusFor } from "@/lib/syllabus";
+import { membersOf, pushOnce } from "@/lib/push";
 import { batchFor, mustTeach } from "@/lib/teaching";
 import SyllabusProgress from "@/models/SyllabusProgress";
 import User from "@/models/User";
@@ -115,6 +116,14 @@ export const POST = route<Ctx>(async (req, { params }) => {
       },
     }))
   );
+  // "Inform students every day which topics were covered": one message per
+  // subject a day, however many topics the teacher ticks.
+  const day = new Date(coveredOn.getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+  await pushOnce(`progress:${batch._id}:${subject}:${day}`, await membersOf(session.tuitionId, [batch._id], ["student"]), {
+    title: `Today in ${subject}: ${topics[0] || entry.chapter}`,
+    body: `${session.user.name} marked what ${batch.name} covered. See it on your Home tab.`,
+    data: { tab: "home", kind: "progress" },
+  });
   return { ok: true, marked: topics.length };
 });
 

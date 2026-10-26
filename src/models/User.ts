@@ -19,6 +19,8 @@ export interface UserDoc extends Document {
   failedLogins: number;
   lockedUntil: Date | null;
   lastLoginAt: Date | null;
+  /** Expo push tokens of the phones the user is logged in on. */
+  pushTokens: { token: string; platform: string; updatedAt: Date }[];
 
   // Teacher
   subjects: SchoolSubject[];
@@ -33,6 +35,15 @@ export interface UserDoc extends Document {
   updatedAt: Date;
 }
 
+const PushTokenSchema = new Schema<UserDoc["pushTokens"][number]>(
+  {
+    token: { type: String, required: true },
+    platform: { type: String, default: "" },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const UserSchema = new Schema<UserDoc>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -46,6 +57,7 @@ const UserSchema = new Schema<UserDoc>(
     failedLogins: { type: Number, default: 0, select: false },
     lockedUntil: { type: Date, default: null, select: false },
     lastLoginAt: { type: Date, default: null },
+    pushTokens: { type: [PushTokenSchema], default: [], select: false },
 
     subjects: { type: [{ type: String, enum: SUBJECTS }], default: [] },
 
@@ -58,5 +70,6 @@ const UserSchema = new Schema<UserDoc>(
 );
 
 UserSchema.index({ tuitionId: 1, role: 1 });
+UserSchema.index({ "pushTokens.token": 1 });
 
 export default models.User || model<UserDoc>("User", UserSchema);

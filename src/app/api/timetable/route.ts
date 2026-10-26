@@ -2,7 +2,7 @@ import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { isObjectId, readJson, route } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
-import { checkClashes, entriesOut, readEntry } from "@/lib/timetable";
+import { announceTimetableChange, checkClashes, entriesOut, readEntry } from "@/lib/timetable";
 import TimetableEntry, { type TimetableEntryDoc } from "@/models/TimetableEntry";
 
 export const dynamic = "force-dynamic";
@@ -29,5 +29,6 @@ export const POST = route(async (req) => {
   const { fields } = await readEntry(session, await readJson(req));
   await checkClashes(fields);
   const entry = (await TimetableEntry.create(fields)) as TimetableEntryDoc;
+  await announceTimetableChange(session, entry.batchId, entry.subject);
   return { entry: (await entriesOut(session, [entry]))[0] };
 });
