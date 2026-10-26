@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Types } from "mongoose";
-import { HttpError, badRequest, oneOf, route, text } from "@/lib/http";
+import { HttpError, badRequest, oneOf, readBody, route, text } from "@/lib/http";
 import { enumOf, requireBankAdmin } from "@/lib/question-bank";
 import Paper from "@/models/Paper";
 import Question from "@/models/Question";
@@ -25,26 +25,17 @@ export const maxDuration = 60;
 const MAX_PDF_BYTES = 15 * 1024 * 1024;
 /** Room for the form's other fields and multipart framing. */
 const MAX_BODY_BYTES = MAX_PDF_BYTES + 64 * 1024;
-const tooLarge = () => new HttpError(413, `The PDF is too large (at most ${MAX_PDF_BYTES / 1024 / 1024} MB).`);
+const TOO_LARGE = `The PDF is too large (at most ${MAX_PDF_BYTES / 1024 / 1024} MB).`;
+const tooLarge = () => new HttpError(413, TOO_LARGE);
 /** Extraction is heavy: at most this many uploads run at once in one server process. */
 const MAX_RUNNING = 2;
 let running = 0;
 
 /** The form, read with a byte limit so an oversized body is cut off, with or without a Content-Length. */
 async function readForm(req: NextRequest): Promise<FormData> {
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  const reader = req.body?.getReader();
-  for (let chunk = await reader?.read(); chunk && !chunk.done; chunk = await reader!.read()) {
-    size += chunk.value.byteLength;
-    if (size > MAX_BODY_BYTES) {
-      await reader!.cancel();
-      throw tooLarge();
-    }
-    chunks.push(chunk.value);
-  }
+  const body = await readBody(req, MAX_BODY_BYTES, TOO_LARGE);
   try {
-    return await new Response(Buffer.concat(chunks), { headers: { "content-type": req.headers.get("content-type") ?? "" } }).formData();
+    return await new Response(body, { headers: { "content-type": req.headers.get("content-type") ?? "" } }).formData();
   } catch {
     throw badRequest("Send the paper as multipart/form-data with the PDF in the field \"pdf\".");
   }
@@ -89,6 +80,7 @@ async function readUpload(req: NextRequest) {
 export const POST = route(async (req) => {
   // Who and how big are checked before the body is read.
   await requireBankAdmin(req);
+  // A declared oversize is refused before taking an upload slot; readBody cuts off the rest.
   if (Number(req.headers.get("content-length")) > MAX_BODY_BYTES) throw tooLarge();
   if (running >= MAX_RUNNING) throw new HttpError(429, "Other papers are being processed. Try again in a minute.");
 

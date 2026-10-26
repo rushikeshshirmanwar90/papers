@@ -64,8 +64,13 @@ async function loadFigure(url: string, ownHost: string, hosts: Set<string>): Pro
   return `data:${type};base64,${bytes.toString("base64")}`;
 }
 
-/** Loads the figures, many at a time; one that fails becomes a "could not be loaded" note. */
-export async function embedFigures(urls: string[], ownHost: string): Promise<Map<string, string | null>> {
+/**
+ * Loads the figures, many at a time; one that fails becomes a "could not be
+ * loaded" note. No new download starts after `budgetMs` (one under way still
+ * has its own timeout), so slow figure hosts can't hold the paper up for long.
+ */
+export async function embedFigures(urls: string[], ownHost: string, budgetMs = Infinity): Promise<Map<string, string | null>> {
+  const stopAt = Date.now() + budgetMs;
   const hosts = figureHosts();
   const embedded = new Map<string, string | null>();
   const toLoad = urls.filter((url) => {
@@ -77,6 +82,10 @@ export async function embedFigures(urls: string[], ownHost: string): Promise<Map
   const worker = async () => {
     while (next < toLoad.length) {
       const url = toLoad[next++];
+      if (Date.now() >= stopAt) {
+        embedded.set(url, null);
+        continue;
+      }
       const dataUri = await loadFigure(url, ownHost.toLowerCase(), hosts).catch(() => null);
       if (dataUri) remember(url, dataUri);
       embedded.set(url, dataUri);
