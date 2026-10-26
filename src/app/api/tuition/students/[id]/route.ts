@@ -39,12 +39,13 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   return { student: studentOut(student, await batchNames(tuitionId)) };
 });
 
-/** Removes the student, their login, test attempts and practice answers. */
+/** Takes the student out of the tuition, with their test attempts and practice answers; their account stays. */
 export const DELETE = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const student = await findMember(tuitionId, params.id, "student");
   await TestAttempt.deleteMany({ studentId: student._id });
   await PracticeAnswer.deleteMany({ studentId: student._id });
-  await User.deleteOne({ _id: student._id });
+  // Their account stays (they may join another tuition); they leave this one.
+  await User.updateOne({ _id: student._id }, { role: null, tuitionId: null, batchId: null, track: null, standard: null });
   return { ok: true };
 });

@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { hashPassword, publicUser, requireUser, signToken } from "@/lib/auth";
+import { hashPassword, publicUser, requireAccount, signToken } from "@/lib/auth";
 import { HttpError, password, readJson, route } from "@/lib/http";
 import User from "@/models/User";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * gets a fresh token so it stays logged in.
  */
 export const POST = route(async (req) => {
-  const { userId } = await requireUser(req);
+  const { userId } = await requireAccount(req);
   const body = await readJson(req);
   const current = body.currentPassword;
   if (typeof current !== "string" || !current) throw new HttpError(400, "Enter your current password.");

@@ -3,19 +3,19 @@ import { ROLES, STANDARDS, SUBJECTS, TRACKS, type Role, type SchoolStandard, typ
 
 /**
  * Everyone who logs in to the app: a tuition's own account, its teachers and
- * its students. Each belongs to one tuition. Role-specific details sit on the
+ * its students, and people who registered but haven't joined a tuition yet
+ * (no role, no tuition). Role-specific details sit on the
  * same document (subjects for a teacher; track, class and batch for a student).
  */
 export interface UserDoc extends Document {
   email: string;
   passwordHash: string;
-  role: Role;
+  /** null until a tuition accepts the person as a student or teacher. */
+  role: Role | null;
   name: string;
   phone: string;
-  tuitionId: Types.ObjectId;
+  tuitionId: Types.ObjectId | null;
   active: boolean;
-  /** A teacher who signed up with a join code and isn't approved yet. */
-  pending: boolean;
   /** Raised on a password change or reset, which signs out every device. */
   tokenVersion: number;
   failedLogins: number;
@@ -50,12 +50,11 @@ const UserSchema = new Schema<UserDoc>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true, select: false },
-    role: { type: String, enum: ROLES, required: true },
+    role: { type: String, enum: [...ROLES, null], default: null },
     name: { type: String, required: true, trim: true },
     phone: { type: String, default: "", trim: true },
-    tuitionId: { type: Schema.Types.ObjectId, ref: "Tuition", required: true, index: true },
+    tuitionId: { type: Schema.Types.ObjectId, ref: "Tuition", default: null, index: true },
     active: { type: Boolean, default: true },
-    pending: { type: Boolean, default: false },
     tokenVersion: { type: Number, default: 0 },
     failedLogins: { type: Number, default: 0, select: false },
     lockedUntil: { type: Date, default: null, select: false },

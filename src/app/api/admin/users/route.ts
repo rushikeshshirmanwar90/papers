@@ -24,12 +24,13 @@ export const GET = route(async (req) => {
     filter.$or = [{ name: re }, { email: re }, { phone: re }];
   }
   if (role && (ROLES as readonly string[]).includes(role)) filter.role = role;
+  if (role === "none") filter.role = null;
   const users = await User.find(filter)
     .select("name email phone role active lastLoginAt tuitionId createdAt +lockedUntil")
     .sort({ lastLoginAt: -1, createdAt: -1 })
     .limit(50)
-    .lean<{ _id: Types.ObjectId; name: string; email: string; phone: string; role: string; active: boolean; lastLoginAt: Date | null; tuitionId: Types.ObjectId; createdAt: Date; lockedUntil?: Date | null }[]>();
-  const tuitions = await Tuition.find({ _id: { $in: users.map((u) => u.tuitionId) } }).select("name active").lean<{ _id: Types.ObjectId; name: string; active: boolean }[]>();
+    .lean<{ _id: Types.ObjectId; name: string; email: string; phone: string; role: string | null; active: boolean; lastLoginAt: Date | null; tuitionId: Types.ObjectId | null; createdAt: Date; lockedUntil?: Date | null }[]>();
+  const tuitions = await Tuition.find({ _id: { $in: users.map((u) => u.tuitionId).filter(Boolean) } }).select("name active").lean<{ _id: Types.ObjectId; name: string; active: boolean }[]>();
   return {
     users: users.map((u) => {
       const t = tuitions.find((x) => String(x._id) === String(u.tuitionId));
@@ -38,11 +39,11 @@ export const GET = route(async (req) => {
         name: u.name,
         email: u.email,
         phone: u.phone,
-        role: u.role,
+        role: u.role ?? null,
         active: u.active,
         locked: !!u.lockedUntil && u.lockedUntil > new Date(),
         lastLoginAt: u.lastLoginAt,
-        tuition: { id: String(u.tuitionId), name: t?.name ?? "", active: t?.active ?? false },
+        tuition: u.tuitionId ? { id: String(u.tuitionId), name: t?.name ?? "", active: t?.active ?? false } : null,
       };
     }),
   };

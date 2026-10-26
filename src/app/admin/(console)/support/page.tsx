@@ -9,14 +9,14 @@ interface UserRow {
   name: string;
   email: string;
   phone: string;
-  role: "tuition" | "teacher" | "student";
+  role: "tuition" | "teacher" | "student" | null;
   active: boolean;
   locked: boolean;
   lastLoginAt: string | null;
-  tuition: { id: string; name: string; active: boolean };
+  tuition: { id: string; name: string; active: boolean } | null;
 }
 
-type RoleFilter = "all" | "tuition" | "teacher" | "student";
+type RoleFilter = "all" | "tuition" | "teacher" | "student" | "none";
 const ROLE_LABEL = { tuition: "Tuition owner", teacher: "Teacher", student: "Student" } as const;
 
 /** Find anyone across all tuitions and get them back in: reset passwords, turn logins on or off. */
@@ -62,6 +62,7 @@ export default function SupportPage() {
             { value: "student", label: "Students" },
             { value: "teacher", label: "Teachers" },
             { value: "tuition", label: "Owners" },
+            { value: "none", label: "Not in a tuition" },
           ]}
         />
       </div>
@@ -83,12 +84,18 @@ export default function SupportPage() {
                     {u.phone ? `, ${u.phone}` : ""}
                   </p>
                 </Td>
-                <Td>{ROLE_LABEL[u.role]}</Td>
+                <Td>{u.role ? ROLE_LABEL[u.role] : <span className="text-omr-lead">No role yet</span>}</Td>
                 <Td>
-                  <Link href={`/admin/tuitions/${u.tuition.id}`} className="hover:text-omr-pink">
-                    {u.tuition.name}
-                  </Link>
-                  {!u.tuition.active ? <p className="text-xs text-omr-fail">Tuition turned off</p> : null}
+                  {u.tuition ? (
+                    <>
+                      <Link href={`/admin/tuitions/${u.tuition.id}`} className="hover:text-omr-pink">
+                        {u.tuition.name}
+                      </Link>
+                      {!u.tuition.active ? <p className="text-xs text-omr-fail">Tuition turned off</p> : null}
+                    </>
+                  ) : (
+                    <span className="text-omr-lead">Not joined yet</span>
+                  )}
                 </Td>
                 <Td>
                   <Status active={u.active} locked={u.locked} />

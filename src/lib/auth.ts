@@ -62,26 +62,32 @@ export async function checkLogin(email: string, password: string): Promise<UserD
     throw new HttpError(401, "Wrong email or password.");
   }
   if (!user.active) throw new HttpError(403, "This account has been turned off. Ask your tuition.");
-  if (user.pending) throw new HttpError(403, "Your tuition hasn't approved your account yet. Ask them to approve it on their Teachers tab.");
-  if (!(await Tuition.exists({ _id: user.tuitionId, active: true }))) {
+  if (user.tuitionId && !(await Tuition.exists({ _id: user.tuitionId, active: true }))) {
     throw new HttpError(403, "This tuition's account is turned off.");
   }
   await User.updateOne({ _id: user._id }, { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() });
   return user;
 }
 
-export interface Session {
+/** A logged-in account, which may not belong to a tuition yet. */
+export interface AccountSession {
   user: UserDoc;
   userId: string;
+  role: Role | null;
+  tuitionId: string | null;
+}
+
+/** A member of a tuition: a role and a tuition are guaranteed. */
+export interface Session extends AccountSession {
   role: Role;
   tuitionId: string;
 }
 
 /**
- * The signed-in user making the request, or a 401. With roles given, anyone
- * else gets a 403.
+ * Anyone logged in, including people who registered but haven't joined a
+ * tuition yet. Only their own account and join requests use this.
  */
-export async function requireUser(req: NextRequest, ...roles: Role[]): Promise<Session> {
+export async function requireAccount(req: NextRequest): Promise<AccountSession> {
   const header = req.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!token) throw new HttpError(401, "Log in to continue.");
@@ -95,28 +101,37 @@ export async function requireUser(req: NextRequest, ...roles: Role[]): Promise<S
   }
 
   const user = payload.sub ? await User.findById(payload.sub) : null;
-  if (!user || !user.active || user.pending || user.tokenVersion !== payload.v) {
+  if (!user || !user.active || user.tokenVersion !== payload.v) {
     throw new HttpError(401, "Your login has expired. Log in again.");
   }
-  if (!(await Tuition.exists({ _id: user.tuitionId, active: true }))) {
+  if (user.tuitionId && !(await Tuition.exists({ _id: user.tuitionId, active: true }))) {
     throw new HttpError(401, "This tuition's account is turned off.");
   }
-  if (roles.length && !roles.includes(user.role)) {
-    throw new HttpError(403, "Your account can't do this.");
-  }
-  return { user, userId: String(user._id), role: user.role, tuitionId: String(user.tuitionId) };
+  return { user, userId: String(user._id), role: user.role ?? null, tuitionId: user.tuitionId ? String(user.tuitionId) : null };
+}
+
+/**
+ * A member of a tuition making the request, or a 401/403. With roles given,
+ * anyone else gets a 403.
+ */
+export async function requireUser(req: NextRequest, ...roles: Role[]): Promise<Session> {
+  const account = await requireAccount(req);
+  if (!account.role || !account.tuitionId) throw new HttpError(403, "Join a tuition first.");
+  if (roles.length && !roles.includes(account.role)) throw new HttpError(403, "Your account can't do this.");
+  return account as Session;
 }
 
 /** What the app gets to know about a user. */
 export async function publicUser(user: UserDoc) {
-  const tuition = await Tuition.findById(user.tuitionId).select("name").lean<{ name: string }>();
+  const tuition = user.tuitionId ? await Tuition.findById(user.tuitionId).select("name").lean<{ name: string }>() : null;
   return {
     id: String(user._id),
     email: user.email,
-    role: user.role,
+    /** null until a tuition accepts them as a student or teacher. */
+    role: user.role ?? null,
     name: user.name,
     phone: user.phone,
-    tuition: { id: String(user.tuitionId), name: tuition?.name ?? "" },
+    tuition: { id: user.tuitionId ? String(user.tuitionId) : "", name: tuition?.name ?? "" },
     subjects: user.subjects ?? [],
     track: user.track ?? null,
     standard: user.standard ?? null,
