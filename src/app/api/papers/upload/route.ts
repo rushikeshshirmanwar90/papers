@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Types } from "mongoose";
-import { connectDB } from "@/lib/db";
+import { HttpError, badRequest, oneOf, route, text } from "@/lib/http";
+import { enumOf, requireBankAdmin } from "@/lib/question-bank";
 import Paper from "@/models/Paper";
 import Question from "@/models/Question";
 import { extractLinesFromPdf } from "@/lib/pdfText";
@@ -11,41 +12,111 @@ import { saveDiagrams } from "@/lib/saveDiagrams";
 import { deleteFilesForPaper, saveFile } from "@/lib/storage";
 import { extractTexPdf } from "@/lib/pdfTex";
 import { formatTexExplanation, stripAnswerMarker, tidyProse } from "@/lib/texExplanation";
-import type { ExamType } from "@shared/types";
 
 export const runtime = "nodejs";
 // Parsing a 15-page paper (fonts, images, geometry) can outlast the default
 // serverless limit; 60s is the ceiling on Vercel's hobby plan.
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
+/**
+ * The largest PDF accepted: the PDF is kept in one Mongo document, which
+ * can't pass 16 MB. (Vercel itself refuses request bodies over 4.5 MB.)
+ */
+const MAX_PDF_BYTES = 15 * 1024 * 1024;
+/** Room for the form's other fields and multipart framing. */
+const MAX_BODY_BYTES = MAX_PDF_BYTES + 64 * 1024;
+const tooLarge = () => new HttpError(413, `The PDF is too large (at most ${MAX_PDF_BYTES / 1024 / 1024} MB).`);
+/** Extraction is heavy: at most this many uploads run at once in one server process. */
+const MAX_RUNNING = 2;
+let running = 0;
+
+/** The form, read with a byte limit so an oversized body is cut off, with or without a Content-Length. */
+async function readForm(req: NextRequest): Promise<FormData> {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = req.body?.getReader();
+  for (let chunk = await reader?.read(); chunk && !chunk.done; chunk = await reader!.read()) {
+    size += chunk.value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader!.cancel();
+      throw tooLarge();
+    }
+    chunks.push(chunk.value);
+  }
   try {
-    const formData = await req.formData();
-    const file = formData.get("pdf");
-    const title = (formData.get("title") as string) || "";
-    const examType = (formData.get("examType") as ExamType) || "JEE";
-    const examCategory = (formData.get("examCategory") as string) || "JEE/NEET";
-    const standard = (formData.get("standard") as string) || "11th";
-    const subject = (formData.get("subject") as string) || "";
-    const chapter = (formData.get("chapter") as string) || "";
-    const topic = (formData.get("topic") as string) || "";
-    const difficulty = (formData.get("difficulty") as string) || "Medium";
-    const yearRaw = formData.get("year") as string;
-    const year = yearRaw ? parseInt(yearRaw, 10) : new Date().getFullYear();
+    return await new Response(Buffer.concat(chunks), { headers: { "content-type": req.headers.get("content-type") ?? "" } }).formData();
+  } catch {
+    throw badRequest("Send the paper as multipart/form-data with the PDF in the field \"pdf\".");
+  }
+}
 
-    if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: "PDF file is required (field name: pdf)" }, { status: 400 });
-    }
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      return NextResponse.json({ error: "Only PDF files are supported" }, { status: 400 });
-    }
+/** The upload's file and details, each checked before any extraction starts. */
+async function readUpload(req: NextRequest) {
+  const formData = await readForm(req);
+  const fields = Object.fromEntries([...formData.entries()].filter(([name]) => name !== "pdf"));
+  const choice = (name: string, allowed: string[], fallback: string) => (text(fields, name) ? oneOf(fields, name, allowed) : fallback);
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+  const file = formData.get("pdf");
+  if (!file || !(file instanceof File)) throw badRequest("PDF file is required (field name: pdf)");
+  if (file.size > MAX_PDF_BYTES) throw tooLarge();
+  if (file.size === 0) throw badRequest("The PDF is empty.");
+  const buffer = Buffer.from(await file.arrayBuffer());
+  // A real PDF starts with "%PDF-" (readers allow it within the first 1 KB),
+  // whatever the file's name or type claim.
+  if (!buffer.subarray(0, 1024).includes("%PDF-")) throw badRequest("Only PDF files are supported");
 
-    // The paper's id is fixed up front so the PDF and every diagram can be
-    // stored against it before the Paper document itself exists.
-    const paperId = new Types.ObjectId();
-    await connectDB();
+  const thisYear = new Date().getFullYear();
+  const yearRaw = text(fields, "year");
+  const year = yearRaw ? Number(yearRaw) : thisYear;
+  if (!Number.isInteger(year) || year < 1950 || year > thisYear + 1) throw badRequest(`year must be a year from 1950 to ${thisYear + 1}.`);
+
+  return {
+    file,
+    buffer,
+    title: text(fields, "title") ?? "",
+    examType: choice("examType", enumOf(Paper, "examType"), "JEE"),
+    examCategory: choice("examCategory", enumOf(Paper, "examCategory"), "JEE/NEET"),
+    standard: choice("standard", enumOf(Paper, "standard"), "11th"),
+    // Stored on every question too, so it must suit the Question model.
+    difficulty: choice("difficulty", enumOf(Question, "difficulty"), "Medium"),
+    subject: choice("subject", enumOf(Question, "subject"), ""),
+    chapter: text(fields, "chapter") ?? "",
+    topic: text(fields, "topic") ?? "",
+    year,
+  };
+}
+
+export const POST = route(async (req) => {
+  // Who and how big are checked before the body is read.
+  await requireBankAdmin(req);
+  if (Number(req.headers.get("content-length")) > MAX_BODY_BYTES) throw tooLarge();
+  if (running >= MAX_RUNNING) throw new HttpError(429, "Other papers are being processed. Try again in a minute.");
+
+  running++;
+  try {
+    return await processUpload(await readUpload(req));
+  } finally {
+    running--;
+  }
+});
+
+async function processUpload({
+  file,
+  buffer,
+  title,
+  examType,
+  examCategory,
+  standard,
+  subject,
+  chapter,
+  topic,
+  difficulty,
+  year,
+}: Awaited<ReturnType<typeof readUpload>>) {
+  // The paper's id is fixed up front so the PDF and every diagram can be
+  // stored against it before the Paper document itself exists.
+  const paperId = new Types.ObjectId();
+  try {
     const pdfUrl = await saveFile(buffer, {
       filename: file.name,
       contentType: "application/pdf",
@@ -169,11 +240,13 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
-    console.error("Upload/parse error:", err);
-    const detail = err instanceof Error ? err.message : "";
-    return NextResponse.json(
-      { error: detail ? `Failed to process PDF upload: ${detail}` : "Failed to process PDF upload" },
-      { status: 500 }
-    );
+    // Undo whatever this upload stored (all of it is under its new paper id),
+    // then let route() log the error and answer with a plain 500.
+    await Promise.allSettled([
+      Question.deleteMany({ paperId }),
+      Paper.deleteOne({ _id: paperId }),
+      deleteFilesForPaper(paperId),
+    ]);
+    throw err;
   }
 }
