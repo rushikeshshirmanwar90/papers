@@ -9,7 +9,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx,.mjs",
     "test": "tsx --test \"tests/**/*.test.ts\""
   },
   "dependencies": {
