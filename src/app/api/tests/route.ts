@@ -13,6 +13,11 @@ export const dynamic = "force-dynamic";
 /**
  * Tests the user should see, newest first: the tuition's all, a teacher's
  * batches', a student's batch's. ?batchId= narrows to one batch.
+ *
+ * Students see a test once it opens. With ?upcoming=1 they also see the
+ * scheduled ones, as summaries only (title, subject, times, counts): opening
+ * or starting a scheduled test is still refused, so no question leaks early.
+ * Opt-in, so older app versions (which would list them as missed) are unchanged.
  */
 export const GET = route(async (req) => {
   const session = await requireUser(req);
@@ -21,8 +26,8 @@ export const GET = route(async (req) => {
   if (ids !== "all") filter.batchId = { $in: ids };
   const only = req.nextUrl.searchParams.get("batchId");
   if (isObjectId(only)) filter.batchId = ids === "all" || ids.some((id) => String(id) === only) ? only : { $in: [] };
-  // Students only see tests once they open.
-  if (session.role === "student") filter.opensAt = { $lte: new Date() };
+  const upcoming = req.nextUrl.searchParams.get("upcoming") === "1";
+  if (session.role === "student" && !upcoming) filter.opensAt = { $lte: new Date() };
   const tests = (await TestRoom.find(filter).select("-questions.explanation").sort({ opensAt: -1 }).limit(200)) as TestRoomDoc[];
   const summaries = await testSummaries(tests);
   if (session.role !== "student") return { tests: summaries };
