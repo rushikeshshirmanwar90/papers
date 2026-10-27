@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import Question from "@/models/Question";
+import Question, { NOT_A_BANK_COPY } from "@/models/Question";
 import { buildFilter } from "@/lib/queryFilters";
 
 // Chapters and topics grow with every upload. Without this, Next pre-renders
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     // One pass over the selection gives every chapter, every topic, and both counts.
     const [groups, subjects] = await Promise.all([
       Question.aggregate<{ _id: { chapter?: string; topic?: string }; count: number }>([
-        { $match: buildFilter(scope, "subject") },
+        { $match: { ...buildFilter(scope, "subject"), ...NOT_A_BANK_COPY } },
         {
           $group: {
             _id: { chapter: "$chapter", topic: "$topic" },

@@ -1,6 +1,6 @@
 import type { Types } from "mongoose";
 import { STANDARDS, type SchoolStandard, type SchoolSubject } from "@/lib/school";
-import Question from "@/models/Question";
+import Question, { NOT_A_BANK_COPY } from "@/models/Question";
 import SyllabusProgress from "@/models/SyllabusProgress";
 
 // The syllabus of a subject, as the question bank knows it: its chapters for
@@ -38,6 +38,7 @@ export async function syllabusFor(subject: SchoolSubject, standards: readonly Sc
   const groups = await Question.aggregate<{ _id: { standard: SchoolStandard; chapter: string; topic: string }; n: number }>([
     {
       $match: {
+        ...NOT_A_BANK_COPY,
         examCategory: "JEE/NEET",
         standard: { $in: wanted },
         subject: { $in: BANK_SUBJECTS[subject] },

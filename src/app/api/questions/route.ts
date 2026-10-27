@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import Question from "@/models/Question";
+import Question, { NOT_A_BANK_COPY } from "@/models/Question";
 import { buildFilter } from "@/lib/queryFilters";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +46,9 @@ export async function GET(req: NextRequest) {
     const paperId = searchParams.get("paperId");
     if (paperId) {
       filter.paperId = paperId;
+    } else {
+      // Across the bank, a past paper's copy of a bank question would list it twice.
+      Object.assign(filter, NOT_A_BANK_COPY);
     }
 
     // Descriptive questions have no options to pick from, so practice and

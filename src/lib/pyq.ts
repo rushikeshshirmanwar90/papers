@@ -1,9 +1,12 @@
 import { badRequest, oneOf } from "@/lib/http";
 import { SUBJECTS, SUBJECTS_BY_TRACK, type SchoolSubject, type Track } from "@/lib/school";
 import { BANK_SUBJECTS } from "@/lib/syllabus";
+import { NOT_A_BANK_COPY } from "@/models/Question";
 
-// Past-year questions: bank questions whose source names an exam and a year,
-// e.g. "NEET 2019", "JEE MAIN 2020", "AIPMT 2014".
+// Past-year questions: questions whose source names an exam and a year, e.g.
+// "NEET 2019", "JEE MAIN 2020", "AIPMT 2014". They come from the question
+// bank and from previous-year papers the extractor loads; a paper's copy of a
+// question the bank already has is left out, so none is listed twice.
 
 const YEAR = "(19|20)\\d{2}";
 
@@ -18,6 +21,7 @@ const EXAMS: Record<Track, string | null> = {
 export function pyqFilter(track: Track, subject: SchoolSubject, chapter?: string | null) {
   const exams = EXAMS[track];
   const filter: Record<string, unknown> = {
+    ...NOT_A_BANK_COPY,
     examCategory: "JEE/NEET",
     subject: { $in: BANK_SUBJECTS[subject] },
     answerType: { $in: ["MCQ", "Numerical"] },
