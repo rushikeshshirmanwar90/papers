@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { HttpError, isObjectId, notFound, readJson, route } from "@/lib/http";
 import { cleanAnswer, isCorrect } from "@/lib/marking";
+import { pyqTrackFilter } from "@/lib/pyq";
 import { schoolSubjectOf } from "@/lib/topic-stats";
 import PracticeAnswer from "@/models/PracticeAnswer";
 import Question from "@/models/Question";
@@ -10,13 +11,16 @@ export const dynamic = "force-dynamic";
 /**
  * Checks a practice answer: { questionId, selected }. Returns whether it's
  * right, the answer and the solution; a student's answer is kept for their
- * strong and weak topics (the latest try counts).
+ * strong and weak topics and topic practice (one record per student and
+ * question: the latest try counts, so sending the same answer again changes
+ * nothing). `saved` says whether it was kept. Only past-year questions of the
+ * user's track can be checked; the student is always the one logged in.
  */
 export const POST = route(async (req) => {
   const session = await requireUser(req);
   const body = await readJson(req);
   if (!isObjectId(body.questionId)) throw notFound("This question");
-  const q = await Question.findById(body.questionId)
+  const q = await Question.findOne({ _id: body.questionId, ...pyqTrackFilter(session.user.track ?? "General") })
     .select("subject standard chapter topic answerType correctAnswer explanation explanationDiagramUrls")
     .lean<{ subject: string; standard: string; chapter: string; topic: string; answerType: string; correctAnswer: string; explanation: string; explanationDiagramUrls: string[] }>();
   if (!q) throw notFound("This question");
@@ -26,7 +30,8 @@ export const POST = route(async (req) => {
   const correct = isCorrect(q, selected);
   if (correct === null) throw new HttpError(400, "This question has no answer key to check against.");
 
-  if (session.role === "student") {
+  const saved = session.role === "student";
+  if (saved) {
     await PracticeAnswer.updateOne(
       { studentId: session.user._id, questionId: body.questionId },
       {
@@ -44,5 +49,5 @@ export const POST = route(async (req) => {
       { upsert: true }
     );
   }
-  return { correct, selected, correctAnswer: q.correctAnswer, explanation: q.explanation, explanationDiagramUrls: q.explanationDiagramUrls ?? [] };
+  return { correct, selected, saved, correctAnswer: q.correctAnswer, explanation: q.explanation, explanationDiagramUrls: q.explanationDiagramUrls ?? [] };
 });
