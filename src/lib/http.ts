@@ -30,7 +30,31 @@ export async function readJson(req: NextRequest): Promise<Record<string, unknown
   return body as Record<string, unknown>;
 }
 
-type Handler<C> = (req: NextRequest, context: C) => Promise<unknown>;
+/**
+ * The raw request body, refused with a 413 once it passes maxBytes: up front
+ * from its Content-Length, else while it is read, so a body sent without
+ * one is cut off too.
+ */
+export async function readBody(req: NextRequest, maxBytes: number, tooLarge = "The request is too large."): Promise<Buffer<ArrayBuffer>> {
+  if (Number(req.headers.get("content-length")) > maxBytes) throw new HttpError(413, tooLarge);
+  const reader = req.body?.getReader();
+  if (!reader) return Buffer.alloc(0);
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new HttpError(413, tooLarge);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+type Handler<C> =(req: NextRequest, context: C) => Promise<unknown>;
 
 /**
  * Connects to the database, runs the handler and answers with its result as

@@ -27,6 +27,9 @@ export async function requireAdmin(req: NextRequest) {
   // A cookie is sent by the browser on its own: changes must come from this site.
   if (req.method !== "GET") {
     const origin = req.headers.get("origin");
-    if (!origin || new URL(origin).host !== req.headers.get("host")) throw new HttpError(403, "That request didn't come from the admin console.");
+    // URL.canParse: an opaque "Origin: null" is refused like any other site.
+    if (!origin || !URL.canParse(origin) || new URL(origin).host !== req.headers.get("host")) {
+      throw new HttpError(403, "That request didn't come from the admin console.");
+    }
   }
 }
