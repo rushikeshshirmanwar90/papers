@@ -53,10 +53,6 @@ See `src/lib/pdfText.ts` (pdf.js line extraction) and
 | `/api/questions` | GET | Search questions by `examCategory`, `standard`, `subject`, `chapter`, `topic`, `level`, `search`, `year`, `paperId`. Paged: `limit` (default 1000, max 5000) and `page`; the response carries `total`. Descriptive questions only with `answerType=Descriptive` (or `answerType=all`) |
 | `/api/questions/:id` | PATCH / DELETE | Edit or delete a single question |
 | `/api/dashboard` | GET | Aggregate stats for the dashboard |
-| `/api/students` | POST / GET | Find-or-create a student by email (mobile login) / list students |
-| `/api/students/:id/attempts` | GET | A student's past attempts |
-| `/api/attempts` | POST | Submit an attempt — scores server-side (+4 / -1 / 0) and returns the full review |
-| `/api/attempts/:id` | GET | Re-fetch a past attempt's review |
 
 ## Notes
 

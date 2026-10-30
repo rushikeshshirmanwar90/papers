@@ -17,19 +17,27 @@ const EXAMS: Record<Track, string | null> = {
   General: null, // any exam
 };
 
-/** The Mongo filter for a track's PYQs in a subject (and chapter). */
-export function pyqFilter(track: Track, subject: SchoolSubject, chapter?: string | null) {
+/** The Mongo filter for a track's PYQs in some bank subjects. */
+function trackFilter(track: Track, bankSubjects: string[]): Record<string, unknown> {
   const exams = EXAMS[track];
-  const filter: Record<string, unknown> = {
+  return {
     ...NOT_A_BANK_COPY,
     examCategory: "JEE/NEET",
-    subject: { $in: BANK_SUBJECTS[subject] },
+    subject: { $in: bankSubjects },
     answerType: { $in: ["MCQ", "Numerical"] },
     source: { $regex: exams ? `(${exams}).*${YEAR}|${YEAR}.*(${exams})` : YEAR, $options: "i" },
   };
+}
+
+/** The Mongo filter for a track's PYQs in a subject (and chapter). */
+export function pyqFilter(track: Track, subject: SchoolSubject, chapter?: string | null) {
+  const filter = trackFilter(track, BANK_SUBJECTS[subject]);
   if (chapter) filter.chapter = chapter;
   return filter;
 }
+
+/** Every PYQ of the track's subjects: the questions a student may practise. */
+export const pyqTrackFilter = (track: Track) => trackFilter(track, SUBJECTS_BY_TRACK[track].flatMap((s) => BANK_SUBJECTS[s]));
 
 /** The subject from ?subject=, checked against the student's track. */
 export function readSubject(value: string | null, track: Track): SchoolSubject {
