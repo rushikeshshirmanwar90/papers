@@ -1,5 +1,5 @@
 import { requireAccount } from "@/lib/auth";
-import { myRequestOut, resolveForPerson } from "@/lib/batch-invite";
+import { joinRequestPush, myRequestOut, resolveForPerson } from "@/lib/batch-invite";
 import { HttpError, readJson, route } from "@/lib/http";
 import { pushToUsers } from "@/lib/push";
 import JoinRequest, { type JoinRequestDoc } from "@/models/JoinRequest";
@@ -39,14 +39,7 @@ export const POST = route(async (req) => {
 
   const owner = await User.findOne({ tuitionId: resolved.tuition._id, role: "tuition" }).select("_id").lean<{ _id: unknown }>();
   if (owner) {
-    await pushToUsers([String(owner._id)], {
-      title: "Someone wants to join",
-      body:
-        resolved.kind === "batch"
-          ? `${user.name} asked to join ${resolved.batch.name}. Approve them under People › Students.`
-          : `${user.name} asked to join ${resolved.tuition.name}. Accept them as a student or teacher on your Home tab.`,
-      data: { tab: "home", kind: "join-request" },
-    });
+    await pushToUsers([String(owner._id)], joinRequestPush(resolved, user.name));
   }
   return { request: await myRequestOut(request) };
 });

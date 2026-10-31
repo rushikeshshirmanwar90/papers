@@ -147,6 +147,21 @@ export async function inviteOut(invite: BatchInviteDoc, batch: BatchDoc) {
 
 export type ResolvedCode = { kind: "batch"; tuition: TuitionDoc; batch: BatchDoc } | { kind: "tuition"; tuition: TuitionDoc };
 
+/** The owner's push for a new join request. A batch request opens People › Students; a legacy institute request stays on Home. */
+export function joinRequestPush(resolved: ResolvedCode, studentName: string) {
+  return resolved.kind === "batch"
+    ? {
+        title: "Someone wants to join",
+        body: `${studentName} asked to join ${resolved.batch.name}. Approve them under People › Students.`,
+        data: { tab: "people", kind: "batch-enrollment" },
+      }
+    : {
+        title: "Someone wants to join",
+        body: `${studentName} asked to join ${resolved.tuition.name}. Accept them as a student or teacher on your Home tab.`,
+        data: { tab: "home", kind: "join-request" },
+      };
+}
+
 export const INVALID_CODE = "That code isn't valid, or it has expired. Check it with your tuition.";
 
 /**
