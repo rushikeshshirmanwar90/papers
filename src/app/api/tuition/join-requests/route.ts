@@ -6,10 +6,10 @@ import User from "@/models/User";
 
 export const dynamic = "force-dynamic";
 
-/** People waiting to join the tuition, oldest first. */
+/** People waiting to join with the tuition's own code, oldest first. (Batch codes: see /tuition/enrollments.) */
 export const GET = route(async (req) => {
   const { tuitionId } = await requireUser(req, "tuition");
-  const requests = await JoinRequest.find({ tuitionId, status: "pending" })
+  const requests = await JoinRequest.find({ tuitionId, status: "pending", batchId: null })
     .sort({ createdAt: 1 })
     .lean<{ _id: Types.ObjectId; userId: Types.ObjectId; createdAt: Date }[]>();
   const people = await User.find({ _id: { $in: requests.map((r) => r.userId) }, tuitionId: null })

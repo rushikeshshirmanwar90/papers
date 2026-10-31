@@ -22,6 +22,9 @@ export interface UserDoc extends Document {
   tokenVersion: number;
   failedLogins: number;
   lockedUntil: Date | null;
+  /** Wrong joining codes in a row; too many lock code entry for a while. */
+  joinCodeFailures: number;
+  joinCodeLockedUntil: Date | null;
   lastLoginAt: Date | null;
   /** Expo push tokens of the phones the user is logged in on. */
   pushTokens: { token: string; platform: string; updatedAt: Date }[];
@@ -63,6 +66,8 @@ const UserSchema = new Schema<UserDoc>(
     tokenVersion: { type: Number, default: 0 },
     failedLogins: { type: Number, default: 0, select: false },
     lockedUntil: { type: Date, default: null, select: false },
+    joinCodeFailures: { type: Number, default: 0, select: false },
+    joinCodeLockedUntil: { type: Date, default: null, select: false },
     lastLoginAt: { type: Date, default: null },
     pushTokens: { type: [PushTokenSchema], default: [], select: false },
 

@@ -12,7 +12,7 @@ export const normaliseCode = (value: unknown) =>
 
 export const formatCode = (code: string) => `${code.slice(0, 4)}-${code.slice(4)}`;
 
-function newCode() {
+export function newCode() {
   return Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
 }
 

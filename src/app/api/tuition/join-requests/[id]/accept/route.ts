@@ -19,6 +19,7 @@ export const POST = route<{ params: { id: string } }>(async (req, { params }) =>
   if (!isObjectId(params.id)) throw notFound("This request");
   const request = await JoinRequest.findOne({ _id: params.id, tuitionId, status: "pending" });
   if (!request) throw notFound("This request");
+  if (request.batchId) throw new HttpError(400, "This student asked to join a batch. Approve them under People › Students.");
   const person = await User.findById(request.userId);
   if (!person) throw notFound("This person");
   if (person.tuitionId) throw new HttpError(409, `${person.name} has already joined a tuition.`);
