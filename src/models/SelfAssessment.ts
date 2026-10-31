@@ -20,7 +20,7 @@ export interface SelfAssessmentDoc extends Document {
   subject: string;
   title: string;
   scope: AssessmentScope[];
-  /** smart | balanced | challenge */
+  /** smart | balanced | challenge | retake */
   mix: string;
   /** The split the questions were chosen for, e.g. { Easy: 6, Medium: 10, Hard: 4 }. */
   plan: { Easy: number; Medium: number; Hard: number; fresh: number; requested: number };
