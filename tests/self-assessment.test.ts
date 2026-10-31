@@ -84,6 +84,13 @@ describe("pickQuestions", () => {
     assert.equal(count(questions, (q) => q.unit === "b"), 10);
   });
 
+  test("a retake of 30 is 9 easy, 9 medium, 12 hard (30/30/40)", () => {
+    assert.deepEqual(splitFor("retake", { answered: 40, correct: 8 }).split, MIX_SPLIT.retake);
+    const { questions, plan } = pickQuestions({ pool: makePool({ a: plenty, b: plenty, c: plenty }), units: units("a", "b", "c"), count: 30, split: MIX_SPLIT.retake, smart: false, random: seededRandom(4) });
+    assert.equal(questions.length, 30);
+    assert.deepEqual(plan.byDifficulty, { Easy: 9, Medium: 9, Hard: 12 });
+  });
+
   test("runs easy → medium → hard, with topics taking turns", () => {
     const { questions } = pickQuestions({ pool: makePool({ a: plenty, b: plenty }), units: units("a", "b"), count: 12, split: MIX_SPLIT.balanced, smart: false, random: seededRandom(2) });
     const rank = { Easy: 0, Medium: 1, Hard: 2 };

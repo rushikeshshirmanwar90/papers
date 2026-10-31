@@ -21,7 +21,7 @@
 export const DIFFICULTIES = ["Easy", "Medium", "Hard"] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
-export const MIXES = ["smart", "balanced", "challenge"] as const;
+export const MIXES = ["smart", "balanced", "challenge", "retake"] as const;
 export type Mix = (typeof MIXES)[number];
 
 export type Split = Record<Difficulty, number>;
@@ -30,6 +30,8 @@ export type Split = Record<Difficulty, number>;
 export const MIX_SPLIT: Record<Exclude<Mix, "smart">, Split> = {
   balanced: { Easy: 0.3, Medium: 0.5, Hard: 0.2 },
   challenge: { Easy: 0.15, Medium: 0.4, Hard: 0.45 },
+  // The app's "Retake weak topics": the weak topics again, leaning hard.
+  retake: { Easy: 0.3, Medium: 0.3, Hard: 0.4 },
 };
 
 /** Smart mix: the split for the student's accuracy so far in the topics picked. */
