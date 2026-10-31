@@ -23,6 +23,16 @@ export interface QuestionDoc extends Document {
   diagramUrls?: string[];
   explanationDiagramUrls?: string[];
   optionDiagramUrls?: { A: string[]; B: string[]; C: string[]; D: string[] };
+  /** The question's id on Vedclass, set by the extractor. */
+  vedclassId?: number;
+  /** Part of a previous-year paper loaded by the extractor (extractor/pyq_jobs.py). */
+  pyqPaper?: boolean;
+  /**
+   * A previous-year paper's copy of a question the bank already has. It shows
+   * in its paper but not in bank-wide lists (PYQ practice, search, filters,
+   * syllabus), so those never list the same question twice.
+   */
+  bankCopy?: boolean;
 }
 
 const QuestionSchema = new Schema<QuestionDoc>({
@@ -62,13 +72,21 @@ const QuestionSchema = new Schema<QuestionDoc>({
     ),
     default: () => ({ A: [], B: [], C: [], D: [] }),
   },
+  vedclassId: { type: Number },
+  pyqPaper: { type: Boolean },
+  bankCopy: { type: Boolean },
 });
 
+/** Leaves out previous-year papers' copies of bank questions; see bankCopy. */
+export const NOT_A_BANK_COPY = { bankCopy: { $ne: true } } as const;
+
 // A paper's questions in order; per-paper subject counts (/api/papers) read
-// straight from the index; the filters the apps search by. The Vedclass
-// extractor (extractor/papers_db.py) creates the same three.
+// straight from the index; the filters the apps search by; a question's
+// Vedclass id. The Vedclass extractor (extractor/papers_db.py) creates the
+// same four.
 QuestionSchema.index({ paperId: 1, questionNumber: 1 });
 QuestionSchema.index({ paperId: 1, subject: 1 });
 QuestionSchema.index({ standard: 1, subject: 1, chapter: 1, topic: 1 });
+QuestionSchema.index({ vedclassId: 1 }, { sparse: true });
 
 export default models.Question || model<QuestionDoc>("Question", QuestionSchema);
