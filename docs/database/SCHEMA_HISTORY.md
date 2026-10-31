@@ -4,6 +4,21 @@ Newest first. Each entry lists only what changed. The current full shape of the
 enrollment-related models is in [SCHEMA_CURRENT.md](SCHEMA_CURRENT.md); each
 data migration has its own file under [migrations/](migrations/).
 
+## 2026-10-31: Teacher invitations (migration 002)
+
+Teachers join with an institute-wide teacher code that reuses the student
+invitation code machinery. The tuition's old `joinCode` (never used) is gone.
+
+| Model | Change |
+|---|---|
+| `BatchInvite` (`batchinvites`) | New `kind` "student" / "teacher" (default "student"). `batchId` is now optional and its unique index is **sparse**, so the institute's teacher code can omit it. New unique partial index `one_teacher_invite_per_tuition` on `{tuitionId: 1}` where `kind = "teacher"`. A teacher code's ciphertext is bound to the tuition id instead of a batch id. Hashing and sealing are the same functions as for student codes. |
+| `JoinRequest` (`joinrequests`) | New `role` "student" / "teacher" (default "student"; set by the server from the code) and `subjects` string[] (default []). Teacher requests have `batchId` null. |
+| `Tuition` (`tuitions`) | Removed `joinCode` and its unique sparse index. |
+
+API changes: removed `/api/tuition/join-code` and the "accept as student or teacher" body of `/api/tuition/join-requests/:id/accept` (it now only approves a pending teacher request). New `/api/tuition/teacher-invite`. `POST /api/join-requests` takes `subjects` for a teacher code. Nothing about batches, assignments, tests or question data changed.
+
+See [migrations/002-teacher-invitations.md](migrations/002-teacher-invitations.md).
+
 ## 2026-10-31: Student joining codes (migration 001)
 
 Source of the "before" side: the last commit (`093815a`) of this repository. All
@@ -47,7 +62,7 @@ Indexes: `_id_`, `batchId_1` (unique), `codeHash_1` (unique, sparse), `tuitionId
 
 ### Unchanged by this work
 
-`tuitions` (the tuition's own `joinCode` still exists and is used by teachers),
+`tuitions` (the old `joinCode` was later removed, see the teacher invitations entry),
 `batches`, and every academic collection (`paper`, `questions`, `testrooms`,
 `testattempts`, `attempts`, `practiceanswers`, `selfassessments`,
 `syllabusprogresses`, `chapterweightages`, `storedfiles`, `timetableentries`,

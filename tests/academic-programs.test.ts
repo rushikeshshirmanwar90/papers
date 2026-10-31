@@ -97,12 +97,11 @@ let mongod: MongoMemoryServer;
 let m: Awaited<ReturnType<typeof load>>;
 
 async function load() {
-  const [batches, batch, students, student, accept, pyq, chapters, questions, topics, answer, overview, me, auth, db] = await Promise.all([
+  const [batches, batch, students, student, pyq, chapters, questions, topics, answer, overview, me, auth, db] = await Promise.all([
     import("@/app/api/tuition/batches/route"),
     import("@/app/api/tuition/batches/[id]/route"),
     import("@/app/api/tuition/students/route"),
     import("@/app/api/tuition/students/[id]/route"),
-    import("@/app/api/tuition/join-requests/[id]/accept/route"),
     import("@/app/api/pyq/route"),
     import("@/app/api/pyq/chapters/route"),
     import("@/app/api/pyq/questions/route"),
@@ -118,7 +117,6 @@ async function load() {
     batch,
     students,
     student,
-    accept,
     pyq,
     chapters,
     questions,
@@ -463,23 +461,6 @@ describe("students and batches stay consistent", () => {
     await patchStudent(ids.cetStudent, { name: "x" }, 404, "otherOwner");
   });
 
-  test("accepting a join request as a student checks the batch", async () => {
-    const person = await m.User.create({ email: "joiner@test.local", name: "Joiner", passwordHash: "x", role: null, tuitionId: null, emailVerified: true });
-    const request = await m.JoinRequest.create({ userId: person._id, tuitionId: ids.tuition });
-    const accept = async (body: Record<string, unknown>, status: number) =>
-      json(await m.accept.POST(req("POST", `/api/tuition/join-requests/${request._id}/accept`, "owner", body), ctx(String(request._id))), status);
-    await accept({ as: "student", program: "NEET", standard: "12th", batchId: ids.cetBatch }, 400);
-    await accept({ as: "student", program: "MHT_CET_PCB", standard: "12th", batchId: ids.cetBatch }, 400); // not offered
-    await accept({ as: "student", program: "JEE", batchId: ids.legacyJee }, 400); // no class
-    assert.equal((await m.User.findById(person._id).lean<{ tuitionId: unknown }>())!.tuitionId, null, "nothing saved when refused");
-    await accept({ as: "student", program: "JEE", standard: "12th", batchId: ids.legacyJee }, 200);
-    const joined = await m.User.findById(person._id).lean<{ program: string; track: string; role: string; standard: string; batchId: unknown }>();
-    assert.equal(joined!.program, "JEE");
-    assert.equal(joined!.track, "JEE");
-    assert.equal(joined!.standard, "12th");
-    assert.equal(String(joined!.batchId), ids.legacyJee);
-    assert.equal(joined!.role, "student");
-  });
 });
 
 describe("batch timings", () => {

@@ -19,8 +19,9 @@ describe("join request push", () => {
     assert.match(push.body, /Asha asked to join NEET 2027/);
   });
 
-  test("a legacy institute request still opens Home", () => {
-    const push = joinRequestPush({ kind: "tuition", tuition } as ResolvedCode, "Asha");
-    assert.deepEqual(push.data, { tab: "home", kind: "join-request" });
+  test("a teacher request opens People", () => {
+    const push = joinRequestPush({ kind: "teacher", tuition } as ResolvedCode, "Asha");
+    assert.deepEqual(push.data, { tab: "people", kind: "teacher-request" });
+    assert.match(push.body, /People › Teachers/);
   });
 });

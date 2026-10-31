@@ -11,6 +11,50 @@ import User from "@/models/User";
 // membership every Student API reads (the user's tuition, role and batch), so
 // the student gets the normal app at once; the request's status follows.
 
+/**
+ * Approves or rejects one pending teacher request of this tuition. Approving
+ * gives the person the teacher role and the tuition membership, with the
+ * subjects they asked with; it assigns no batch (the tuition does that from
+ * Teachers and Batch Details). Throws a 404 when the request isn't a pending
+ * teacher request of this tuition, and a 409 when the person can't be let in.
+ */
+export async function decideTeacher(tuitionId: string, adminName: string, requestId: string, action: "approve" | "reject") {
+  const request = (await JoinRequest.findOne({ _id: requestId, tuitionId, status: "pending", role: "teacher" })) as JoinRequestDoc | null;
+  if (!request) throw new HttpError(404, "This request is no longer waiting. Refresh and try again.");
+
+  // Claim the request first, so two admins (or a double tap) can't both decide it.
+  const claimed = await JoinRequest.findOneAndUpdate(
+    { _id: request._id, tuitionId, status: "pending" },
+    { status: action === "approve" ? "accepted" : "rejected", acceptedAs: action === "approve" ? "teacher" : null, decidedAt: new Date() }
+  );
+  if (!claimed) throw new HttpError(409, "Already decided.");
+  if (action === "reject") return;
+
+  // Only someone still without a tuition can be let in: never move a member.
+  let joined: { modifiedCount: number };
+  try {
+    joined = await User.updateOne(
+      { _id: request.userId, tuitionId: null, role: null, active: true },
+      { tuitionId, role: "teacher", subjects: request.subjects }
+    );
+  } catch (error) {
+    // The account wasn't changed: hand the request back so it can be approved again.
+    console.error("[enrollment] couldn't update the account:", error);
+    await JoinRequest.updateOne({ _id: request._id, status: "accepted" }, { status: "pending", acceptedAs: null, decidedAt: null });
+    throw new HttpError(500, "Couldn't update their account. Try again.");
+  }
+  if (!joined.modifiedCount) {
+    await JoinRequest.updateOne({ _id: request._id }, { status: "cancelled", acceptedAs: null, decidedAt: new Date() });
+    throw new HttpError(409, "They have already joined a tuition, or their account is off.");
+  }
+  await JoinRequest.updateMany({ userId: request.userId, status: "pending" }, { status: "cancelled", decidedAt: new Date() });
+  await pushToUsers([request.userId], {
+    title: "Welcome aboard",
+    body: `${adminName} approved your request to teach. Open the app to start.`,
+    data: { tab: "home", kind: "joined" },
+  });
+}
+
 export interface EnrollmentResult {
   approved: number;
   rejected: number;

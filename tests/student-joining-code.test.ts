@@ -13,7 +13,7 @@ let mongod: MongoMemoryServer;
 let m: Awaited<ReturnType<typeof load>>;
 
 async function load() {
-  const [invite, validate, join, mine, enrollments, decide, legacyList, legacyAccept, overview, db, auth, batchInvite] = await Promise.all([
+  const [invite, validate, join, mine, enrollments, decide, teacherList, teacherApprove, overview, db, auth, batchInvite] =await Promise.all([
     import("@/app/api/tuition/batches/[id]/invite/route"),
     import("@/app/api/join-requests/validate/route"),
     import("@/app/api/join-requests/route"),
@@ -28,7 +28,7 @@ async function load() {
     import("@/lib/batch-invite"),
   ]);
   return {
-    invite, validate, join, mine, enrollments, decide, legacyList, legacyAccept, overview, db, auth, batchInvite,
+    invite, validate, join, mine, enrollments, decide, teacherList, teacherApprove, overview, db, auth, batchInvite,
     Tuition: (await import("@/models/Tuition")).default,
     User: (await import("@/models/User")).default,
     Batch: (await import("@/models/Batch")).default,
@@ -244,12 +244,6 @@ describe("a student entering a code", () => {
     await check("offbatch", code);
   });
 
-  test("an older tuition join code still works, and leads to no batch", async () => {
-    await newStudent("legacy");
-    await m.Tuition.updateOne({ _id: ids.tuitionB }, { joinCode: "K7Q2M9TA" });
-    const { preview } = await check("legacy", "k7q2-m9ta");
-    assert.deepEqual(preview, { kind: "tuition", institute: "Beta Classes", batch: null });
-  });
 });
 
 describe("enrollment requests", () => {
@@ -308,12 +302,12 @@ describe("enrollment requests", () => {
     await out(await m.enrollments.GET(req("GET", "/", "amit"), {}), 403);
   });
 
-  test("batch requests stay out of the older accept-as-student-or-teacher list, which can't take them", async () => {
-    const legacy = (await out(await m.legacyList.GET(req("GET", "/", "adminA"), {}), 200)).requests as { person: { name: string } }[];
-    assert.ok(!legacy.some((r) => r.person.name === "amit"));
+  test("batch requests stay out of the teacher list, and the teacher approval can't take them", async () => {
+    const teachers = (await out(await m.teacherList.GET(req("GET", "/", "adminA"), {}), 200)).requests as { person: { name: string } }[];
+    assert.ok(!teachers.some((r) => r.person.name === "amit"));
     const id = await pendingId("amit");
-    const res = await m.legacyAccept.POST(req("POST", "/", "adminA", { as: "teacher", subjects: ["Physics"] }), { params: { id } });
-    await out(res, 400);
+    const res = await m.teacherApprove.POST(req("POST", "/", "adminA"), { params: { id } });
+    await out(res, 404);
     assert.equal((await m.User.findById(ids.amit).lean<{ role: unknown }>())!.role, null);
   });
 });
