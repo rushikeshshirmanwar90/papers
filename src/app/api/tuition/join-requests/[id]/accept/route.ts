@@ -1,8 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { HttpError, isObjectId, listOf, notFound, oneOf, readJson, route } from "@/lib/http";
 import { pushToUsers } from "@/lib/push";
-import { STANDARDS, SUBJECTS, TRACKS } from "@/lib/school";
-import { readBatchId } from "@/lib/tuition";
+import { PROGRAM_INFO, SUBJECTS } from "@/lib/school";
+import { mustFit, readNewStudent, readStudentBatch } from "@/lib/tuition";
 import JoinRequest from "@/models/JoinRequest";
 import User from "@/models/User";
 
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Lets the person in, as a student or a teacher:
- * { as: "student", track, standard?, batchId? } or { as: "teacher", subjects }.
+ * { as: "student", program (or an older app's track), standard, batchId? } or { as: "teacher", subjects }.
+ * The batch must be of the student's program and class.
  * Their app switches to the student or teacher screens.
  */
 export const POST = route<{ params: { id: string } }>(async (req, { params }) => {
@@ -27,9 +28,13 @@ export const POST = route<{ params: { id: string } }>(async (req, { params }) =>
   person.tuitionId = request.tuitionId;
   person.role = as;
   if (as === "student") {
-    person.track = oneOf(body, "track", TRACKS, "a track");
-    person.standard = body.standard ? oneOf(body, "standard", STANDARDS, "a class") : undefined;
-    person.batchId = await readBatchId(body.batchId, tuitionId);
+    const { program, standard } = readNewStudent(body);
+    const batch = await readStudentBatch(body.batchId, tuitionId);
+    mustFit({ program, standard }, batch);
+    person.program = program;
+    person.track = PROGRAM_INFO[program].track;
+    person.standard = standard;
+    person.batchId = batch?._id ?? null;
     person.subjects = [];
   } else {
     const subjects = listOf(body, "subjects", SUBJECTS, "Subjects");

@@ -1,7 +1,8 @@
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { route } from "@/lib/http";
-import { pyqFilter, readSubject } from "@/lib/pyq";
+import { practiceBankOf, pyqFilter, readSubject } from "@/lib/pyq";
+import { programOf } from "@/lib/school";
 import PracticeAnswer from "@/models/PracticeAnswer";
 import Question from "@/models/Question";
 
@@ -10,15 +11,19 @@ export const dynamic = "force-dynamic";
 /**
  * The chapters of a subject that have past-year questions for the student's
  * track (?subject=Physics), how many each has, and how many the student has
- * practised and got right.
+ * practised and got right. Programs without a question bank get none
+ * (`available: false`).
  */
 export const GET = route(async (req) => {
   const session = await requireUser(req);
   const track = session.user.track ?? "General";
-  const subject = readSubject(req.nextUrl.searchParams.get("subject"), track);
+  const program = programOf(session.user);
+  const subject = readSubject(req.nextUrl.searchParams.get("subject"), session.user);
+  const bank = practiceBankOf(session.user);
+  if (!bank) return { subject, track, program, available: false, total: 0, chapters: [] };
 
   const groups = await Question.aggregate<{ _id: { chapter: string; standard: string }; n: number; ids: Types.ObjectId[] }>([
-    { $match: pyqFilter(track, subject) },
+    { $match: pyqFilter(bank, subject) },
     { $match: { chapter: { $nin: ["", null] } } },
     { $group: { _id: { chapter: "$chapter", standard: "$standard" }, n: { $sum: 1 }, ids: { $push: "$_id" } } },
   ]);
@@ -39,5 +44,5 @@ export const GET = route(async (req) => {
       };
     })
     .sort((a, b) => a.standard.localeCompare(b.standard) || a.chapter.localeCompare(b.chapter, undefined, { numeric: true }));
-  return { subject, track, total: chapters.reduce((n, c) => n + c.questions, 0), chapters };
+  return { subject, track, program, available: true, total: chapters.reduce((n, c) => n + c.questions, 0), chapters };
 });

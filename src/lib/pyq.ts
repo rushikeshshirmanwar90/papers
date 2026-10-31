@@ -1,43 +1,62 @@
 import { badRequest, oneOf } from "@/lib/http";
-import { SUBJECTS, SUBJECTS_BY_TRACK, type SchoolSubject, type Track } from "@/lib/school";
+import {
+  PROGRAM_INFO,
+  programOf,
+  programSubjects,
+  questionBankOf,
+  SUBJECTS,
+  type Program,
+  type QuestionBank,
+  type SchoolSubject,
+  type Track,
+} from "@/lib/school";
 import { BANK_SUBJECTS } from "@/lib/syllabus";
 
 // Past-year questions: bank questions whose source names an exam and a year,
 // e.g. "NEET 2019", "JEE MAIN 2020", "AIPMT 2014".
+//
+// Only the JEE and NEET banks exist. A student practises from their
+// program's bank; programs without one (MHT-CET, HSC, General Tuition) get
+// nothing, never another program's questions. There is no "any exam" bank.
 
 const YEAR = "(19|20)\\d{2}";
 
-/** The exams that count as past papers for each track. */
-const EXAMS: Record<Track, string | null> = {
-  NEET: "NEET|AIPMT|AIIMS|JIPMER",
-  JEE: "JEE|AIEEE|IIT|BITSAT",
-  General: null, // any exam
+/** Each bank: the exams that count as its past papers, and its subjects. */
+const BANKS: Record<QuestionBank, { exams: string; subjects: readonly SchoolSubject[] }> = {
+  NEET: { exams: "NEET|AIPMT|AIIMS|JIPMER", subjects: PROGRAM_INFO.NEET.allowed },
+  JEE: { exams: "JEE|AIEEE|IIT|BITSAT", subjects: PROGRAM_INFO.JEE.allowed },
 };
 
-/** The Mongo filter for a track's PYQs in some bank subjects. */
-function trackFilter(track: Track, bankSubjects: string[]): Record<string, unknown> {
-  const exams = EXAMS[track];
+/** The Mongo filter for a bank's PYQs in some bank subjects. */
+function bankFilter(bank: QuestionBank, bankSubjects: string[]): Record<string, unknown> {
+  const { exams } = BANKS[bank];
   return {
     examCategory: "JEE/NEET",
     subject: { $in: bankSubjects },
     answerType: { $in: ["MCQ", "Numerical"] },
-    source: { $regex: exams ? `(${exams}).*${YEAR}|${YEAR}.*(${exams})` : YEAR, $options: "i" },
+    source: { $regex: `(${exams}).*${YEAR}|${YEAR}.*(${exams})`, $options: "i" },
   };
 }
 
-/** The Mongo filter for a track's PYQs in a subject (and chapter). */
-export function pyqFilter(track: Track, subject: SchoolSubject, chapter?: string | null) {
-  const filter = trackFilter(track, BANK_SUBJECTS[subject]);
+/** The Mongo filter for a bank's PYQs in a subject (and chapter). */
+export function pyqFilter(bank: QuestionBank, subject: SchoolSubject, chapter?: string | null) {
+  const filter = bankFilter(bank, BANK_SUBJECTS[subject]);
   if (chapter) filter.chapter = chapter;
   return filter;
 }
 
-/** Every PYQ of the track's subjects: the questions a student may practise. */
-export const pyqTrackFilter = (track: Track) => trackFilter(track, SUBJECTS_BY_TRACK[track].flatMap((s) => BANK_SUBJECTS[s]));
+/** Every PYQ of the bank's subjects: the questions a student of that bank may practise. */
+export const pyqBankFilter = (bank: QuestionBank) => bankFilter(bank, BANKS[bank].subjects.flatMap((s) => BANK_SUBJECTS[s]));
 
-/** The subject from ?subject=, checked against the student's track. */
-export function readSubject(value: string | null, track: Track): SchoolSubject {
+type Practiser = { program?: Program | null; track?: Track | null };
+
+/** The bank a user practises from, or null: their program has none (or they have no program). */
+export const practiceBankOf = (user: Practiser): QuestionBank | null => questionBankOf(programOf(user));
+
+/** The subject from ?subject=, checked against the user's program. */
+export function readSubject(value: string | null, user: Practiser): SchoolSubject {
   const subject = oneOf({ subject: value }, "subject", SUBJECTS, "a subject");
-  if (!SUBJECTS_BY_TRACK[track].includes(subject)) throw badRequest(`${subject} isn't part of the ${track} track.`);
+  const program = programOf(user);
+  if (!programSubjects(program).includes(subject)) throw badRequest(`${subject} isn't part of ${program ? PROGRAM_INFO[program].label : "your subjects"}.`);
   return subject;
 }

@@ -2,7 +2,7 @@ import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { route } from "@/lib/http";
 import { ANSWER_FIELDS, answersOf, nodeFilter, QUESTION_FIELDS, readNode, readPage, statsOf } from "@/lib/practice";
-import { readSubject } from "@/lib/pyq";
+import { practiceBankOf, readSubject } from "@/lib/pyq";
 import Question from "@/models/Question";
 
 export const dynamic = "force-dynamic";
@@ -16,18 +16,20 @@ export const dynamic = "force-dynamic";
  * gives the next page with no repeats, even while the student answers.
  * Answers and solutions come only with status=answered: the student has
  * answered those already. Otherwise the answer check returns them.
+ * Programs without a question bank get none (`available: false`).
  */
 export const GET = route(async (req) => {
   const session = await requireUser(req, "student");
   const { user } = session;
-  const track = user.track ?? "General";
   const params = req.nextUrl.searchParams;
-  const subject = readSubject(params.get("subject"), track);
+  const subject = readSubject(params.get("subject"), user);
   const node = readNode(params, subject);
   const { status, after, limit } = readPage(params);
   const empty = { node, status, total: 0, summary: statsOf(0, 0, 0), questions: [], next: null };
 
-  const base = await nodeFilter(track, node);
+  const bank = practiceBankOf(user);
+  if (!bank) return { ...empty, available: false };
+  const base = await nodeFilter(bank, node);
   if (!base) return empty;
 
   // The student's answers within this chapter or topic.

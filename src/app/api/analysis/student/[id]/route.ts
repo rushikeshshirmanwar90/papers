@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { isObjectId, notFound, route } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
+import { programOf } from "@/lib/school";
 import { byChapter, topicStatsByStudent } from "@/lib/topic-stats";
 import Batch from "@/models/Batch";
 import TestAttempt from "@/models/TestAttempt";
@@ -51,7 +52,7 @@ export const GET = route<{ params: { id: string } }>(async (req, { params }) => 
   const percent = (a: { score: number; maxScore: number }) => (a.maxScore ? Math.round((a.score / a.maxScore) * 100) : 0);
 
   return {
-    student: { id: String(id), name: student.name, track: student.track ?? null, standard: student.standard ?? null, batch: batch?.name ?? null },
+    student: { id: String(id), name: student.name, program: programOf(student), track: student.track ?? null, standard: student.standard ?? null, batch: batch?.name ?? null },
     summary: {
       testsTaken: attempts.length,
       averagePercent: attempts.length ? Math.round(attempts.reduce((n, a) => n + percent(a), 0) / attempts.length) : null,

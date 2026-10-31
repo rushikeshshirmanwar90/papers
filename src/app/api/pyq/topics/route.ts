@@ -2,7 +2,8 @@ import type { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { route } from "@/lib/http";
 import { answersOf, chapterKey, low, pyqGroups, statsOf, topicKey } from "@/lib/practice";
-import { pyqFilter, readSubject } from "@/lib/pyq";
+import { practiceBankOf, pyqFilter, readSubject } from "@/lib/pyq";
+import { programOf } from "@/lib/school";
 import { syllabusFor } from "@/lib/syllabus";
 import Question from "@/models/Question";
 import SyllabusProgress from "@/models/SyllabusProgress";
@@ -22,16 +23,34 @@ const bump = (tally: Tally, key: string, field: "questions" | "answered" | "corr
  * (the same chapters and topics as the Syllabus tab, with what their batch
  * has covered), and for each chapter and topic how many past-year questions
  * there are and how the student has done on them. No questions are sent.
+ *
+ * Programs without a question bank (MHT-CET, HSC, General Tuition) get
+ * `available: false` and no chapters: their practice isn't ready yet. Older
+ * app versions show that as "Nothing to practise yet".
  */
 export const GET = route(async (req) => {
   const session = await requireUser(req, "student");
   const { user } = session;
   const track = user.track ?? "General";
-  const subject = readSubject(req.nextUrl.searchParams.get("subject"), track);
+  const program = programOf(user);
+  const subject = readSubject(req.nextUrl.searchParams.get("subject"), user);
+  const bank = practiceBankOf(user);
+  if (!bank) {
+    return {
+      subject,
+      track,
+      program,
+      available: false,
+      standard: user.standard ?? null,
+      hasBatch: !!user.batchId,
+      summary: { ...statsOf(0, 0, 0), coveredTopics: 0, totalTopics: 0 },
+      chapters: [],
+    };
+  }
 
   const [syllabus, groups, progress, answers] = await Promise.all([
     syllabusFor(subject),
-    pyqGroups(track, subject),
+    pyqGroups(bank, subject),
     user.batchId
       ? SyllabusProgress.find({ batchId: user.batchId, subject }).select("standard chapter topic coveredOn").lean<{ standard: string; chapter: string; topic: string; coveredOn: Date }[]>()
       : Promise.resolve([]),
@@ -39,9 +58,9 @@ export const GET = route(async (req) => {
   ]);
 
   // Where each answered question sits now (its current chapter and topic),
-  // counting only questions that are still the track's PYQs.
+  // counting only questions that are still the bank's PYQs.
   const answered = answers.size
-    ? await Question.find({ ...pyqFilter(track, subject), _id: { $in: [...answers.values()].map((a) => a.questionId) } })
+    ? await Question.find({ ...pyqFilter(bank, subject), _id: { $in: [...answers.values()].map((a) => a.questionId) } })
         .select("standard chapter topic")
         .lean<{ _id: Types.ObjectId; standard: string; chapter: string; topic: string }[]>()
     : [];
@@ -92,6 +111,8 @@ export const GET = route(async (req) => {
   return {
     subject,
     track,
+    program,
+    available: true,
     standard: user.standard ?? null,
     hasBatch: !!user.batchId,
     summary: {

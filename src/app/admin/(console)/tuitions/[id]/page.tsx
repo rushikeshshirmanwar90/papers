@@ -34,9 +34,9 @@ interface Person {
 interface TuitionDetail {
   tuition: { id: string; name: string; address: string; phone: string; email: string; active: boolean; createdAt: string };
   login: { userId: string; email: string; lastLoginAt: string | null } | null;
-  batches: { id: string; name: string; track: string; standard: string | null; subjects: string[]; venue: string; weeklyMinutes: number; teachers: string[]; students: number }[];
+  batches: { id: string; name: string; track: string; program?: string; academicYear?: string | null; standard: string | null; subjects: string[]; venue: string; weeklyMinutes: number; teachers: string[]; students: number }[];
   teachers: (Person & { subjects: string[] })[];
-  students: (Person & { track: string | null; standard: string | null; batch: string | null })[];
+  students: (Person & { track: string | null; program?: string | null; standard: string | null; batch: string | null })[];
   tests: { id: string; title: string; batch: string | null; questions: number; opensAt: string; closesAt: string | null; submitted: number }[];
 }
 
@@ -167,13 +167,14 @@ export default function TuitionDetailPage({ params }: { params: { id: string } }
 
       <Panel>
         {tab === "batches" ? (
-          <Table head={["Batch", "Track", "Subjects and teachers", "Students", "Class time a week"]} empty={data.batches.length ? null : <Empty title="No batches yet">The tuition creates batches in the app.</Empty>}>
+          <Table head={["Batch", "Program", "Subjects and teachers", "Students", "Class time a week"]} empty={data.batches.length ? null : <Empty title="No batches yet">The tuition creates batches in the app.</Empty>}>
             {data.batches.map((b) => (
               <tr key={b.id}>
                 <Td className="font-semibold">{b.name}</Td>
                 <Td>
-                  {b.track}
+                  {b.program ?? b.track}
                   {b.standard ? `, ${b.standard}` : ""}
+                  {b.academicYear ? `, ${b.academicYear}` : ""}
                 </Td>
                 <Td className="text-omr-lead">{b.teachers.length ? b.teachers.join(", ") : b.subjects.join(", ")}</Td>
                 <Td className="text-right">{b.students}</Td>
@@ -199,7 +200,7 @@ export default function TuitionDetailPage({ params }: { params: { id: string } }
             ))}
           </Table>
         ) : tab === "students" ? (
-          <Table head={["Student", "Track", "Batch", "Status", "Last login", ""]} empty={data.students.length ? null : <Empty title="No students yet">The tuition enrolls students in the app.</Empty>}>
+          <Table head={["Student", "Program", "Batch", "Status", "Last login", ""]} empty={data.students.length ? null : <Empty title="No students yet">The tuition enrolls students in the app.</Empty>}>
             {data.students.map((s) => (
               <tr key={s.id}>
                 <Td>
@@ -207,7 +208,7 @@ export default function TuitionDetailPage({ params }: { params: { id: string } }
                   <p className="text-xs text-omr-lead">{s.email}</p>
                 </Td>
                 <Td>
-                  {s.track ?? "Not set"}
+                  {s.program ?? s.track ?? "Not set"}
                   {s.standard ? `, ${s.standard}` : ""}
                 </Td>
                 <Td>{s.batch ?? <span className="text-omr-lead">No batch</span>}</Td>

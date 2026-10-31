@@ -1,5 +1,5 @@
 import { Schema, model, models, type Document, type Types } from "mongoose";
-import { ROLES, STANDARDS, SUBJECTS, TRACKS, type Role, type SchoolStandard, type SchoolSubject, type Track } from "@/lib/school";
+import { PROGRAMS, ROLES, STANDARDS, SUBJECTS, TRACKS, type Program, type Role, type SchoolStandard, type SchoolSubject, type Track } from "@/lib/school";
 
 /**
  * Everyone who logs in to the app: a tuition's own account, its teachers and
@@ -30,6 +30,8 @@ export interface UserDoc extends Document {
   subjects: SchoolSubject[];
 
   // Student
+  /** What they prepare for. Older students have only `track`: see programOf. */
+  program?: Program;
   track?: Track;
   standard?: SchoolStandard;
   batchId?: Types.ObjectId | null;
@@ -66,6 +68,7 @@ const UserSchema = new Schema<UserDoc>(
 
     subjects: { type: [{ type: String, enum: SUBJECTS }], default: [] },
 
+    program: { type: String, enum: PROGRAMS },
     track: { type: String, enum: TRACKS },
     standard: { type: String, enum: STANDARDS },
     batchId: { type: Schema.Types.ObjectId, ref: "Batch", default: null, index: true },

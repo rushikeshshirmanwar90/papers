@@ -1,7 +1,7 @@
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { route } from "@/lib/http";
-import { SUBJECTS_BY_TRACK } from "@/lib/school";
+import { programOf, programSubjects } from "@/lib/school";
 import { coverageFor } from "@/lib/syllabus";
 import { todayInIndia } from "@/lib/teaching";
 import { testSummaries } from "@/lib/tests";
@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 export const GET = route(async (req) => {
   const session = await requireUser(req, "student");
   const { user } = session;
-  const subjects = SUBJECTS_BY_TRACK[user.track ?? "General"];
+  const subjects = programSubjects(programOf(user));
   const batch = user.batchId ? ((await Batch.findOne({ _id: user.batchId, tuitionId: session.tuitionId })) as BatchDoc | null) : null;
 
   const [stats, lastAttempt] = await Promise.all([

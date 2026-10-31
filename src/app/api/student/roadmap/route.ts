@@ -1,7 +1,7 @@
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { badRequest, oneOf, route } from "@/lib/http";
-import { SUBJECTS, SUBJECTS_BY_TRACK } from "@/lib/school";
+import { PROGRAM_INFO, programOf, programSubjects, SUBJECTS } from "@/lib/school";
 import { syllabusFor } from "@/lib/syllabus";
 import { levelOf, topicStatsByStudent } from "@/lib/topic-stats";
 import ChapterWeightage from "@/models/ChapterWeightage";
@@ -21,7 +21,8 @@ export const GET = route(async (req) => {
   const { user } = session;
   const track = user.track ?? "General";
   const subject = oneOf({ subject: req.nextUrl.searchParams.get("subject") }, "subject", SUBJECTS, "a subject");
-  if (!SUBJECTS_BY_TRACK[track].includes(subject)) throw badRequest(`${subject} isn't part of the ${track} track.`);
+  const program = programOf(user);
+  if (!programSubjects(program).includes(subject)) throw badRequest(`${subject} isn't part of ${program ? PROGRAM_INFO[program].label : "your subjects"}.`);
 
   const [syllabus, weights, progress, stats] = await Promise.all([
     syllabusFor(subject),
@@ -68,6 +69,7 @@ export const GET = route(async (req) => {
   return {
     subject,
     track,
+    program,
     standard: user.standard ?? null,
     hasBatch: !!user.batchId,
     summary: {

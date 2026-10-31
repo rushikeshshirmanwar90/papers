@@ -1,11 +1,11 @@
 import type { Types } from "mongoose";
 import { badRequest, isObjectId, oneOf } from "@/lib/http";
 import { pyqFilter } from "@/lib/pyq";
-import { STANDARDS, type SchoolStandard, type SchoolSubject, type Track } from "@/lib/school";
+import { STANDARDS, type QuestionBank, type SchoolStandard, type SchoolSubject } from "@/lib/school";
 import PracticeAnswer from "@/models/PracticeAnswer";
 import Question from "@/models/Question";
 
-// Topic practice: the track's past-year questions, grouped the way the
+// Topic practice: the bank's past-year questions, grouped the way the
 // student's syllabus is (class → chapter → topic), with the student's own
 // answers. Progress is PracticeAnswer: one record per student and question
 // holding the latest answer, so counts come straight from it.
@@ -19,7 +19,7 @@ export const low = (s: string | null | undefined) => (s ?? "").trim().toLowerCas
 export const chapterKey = (standard: string, chapter: string) => `${standard}|${low(chapter)}`;
 export const topicKey = (standard: string, chapter: string, topic: string) => `${standard}|${low(chapter)}|${low(topic)}`;
 
-/** One group of the track's PYQs: a class, chapter and topic as stored, and how many questions. */
+/** One group of a bank's PYQs: a class, chapter and topic as stored, and how many questions. */
 export interface PyqGroup {
   standard: string;
   chapter: string;
@@ -33,14 +33,14 @@ const groupCache = new Map<string, { at: number; groups: PyqGroup[] }>();
 /** Forgets the cached counts (for tests that change the bank). */
 export const clearPracticeCache = () => groupCache.clear();
 
-/** How many PYQs each chapter and topic of the subject has for the track (cached briefly, like the syllabus). */
-export async function pyqGroups(track: Track, subject: SchoolSubject): Promise<PyqGroup[]> {
-  const key = `${track}|${subject}`;
+/** How many PYQs each chapter and topic of the subject has in the bank (cached briefly, like the syllabus). */
+export async function pyqGroups(bank: QuestionBank, subject: SchoolSubject): Promise<PyqGroup[]> {
+  const key = `${bank}|${subject}`;
   const hit = groupCache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.groups;
   const rows = await Question.aggregate<{ _id: { standard: string; chapter: string; topic: string | null }; n: number }>([
     // The class first so the standard/subject/chapter/topic index is used.
-    { $match: { standard: { $in: [...STANDARDS] }, ...pyqFilter(track, subject), chapter: { $nin: ["", null] } } },
+    { $match: { standard: { $in: [...STANDARDS] }, ...pyqFilter(bank, subject), chapter: { $nin: ["", null] } } },
     { $group: { _id: { standard: "$standard", chapter: "$chapter", topic: "$topic" }, n: { $sum: 1 } } },
   ]);
   const groups = rows.map((r) => ({ standard: r._id.standard, chapter: r._id.chapter, topic: r._id.topic ?? "", questions: r.n }));
@@ -90,13 +90,13 @@ export function readPage(params: URLSearchParams) {
  * Names are matched the way the syllabus matches them (trimmed, any case) and
  * then queried as stored, so the count and the pages agree.
  */
-export async function nodeFilter(track: Track, node: PracticeNode): Promise<Record<string, unknown> | null> {
-  const groups = (await pyqGroups(track, node.subject)).filter(
+export async function nodeFilter(bank: QuestionBank, node: PracticeNode): Promise<Record<string, unknown> | null> {
+  const groups = (await pyqGroups(bank, node.subject)).filter(
     (g) => g.standard === node.standard && low(g.chapter) === low(node.chapter) && (node.topic === null || low(g.topic) === low(node.topic))
   );
   if (!groups.length) return null;
   const chapters = [...new Set(groups.map((g) => g.chapter))];
-  const filter: Record<string, unknown> = { standard: node.standard, ...pyqFilter(track, node.subject), chapter: { $in: chapters } };
+  const filter: Record<string, unknown> = { standard: node.standard, ...pyqFilter(bank, node.subject), chapter: { $in: chapters } };
   if (node.topic !== null) {
     const topics = [...new Set(groups.map((g) => g.topic))];
     filter.topic = { $in: topics.includes("") ? [...topics, null] : topics };

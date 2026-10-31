@@ -43,3 +43,6 @@ next-env.d.ts
 # uploaded PDF papers (user data, not source)
 /public/uploads/*
 !/public/uploads/.gitkeep
+
+# local development database (npm run dev:local)
+/.local-mongo/

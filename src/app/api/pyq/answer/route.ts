@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { HttpError, isObjectId, notFound, readJson, route } from "@/lib/http";
 import { cleanAnswer, isCorrect } from "@/lib/marking";
-import { pyqTrackFilter } from "@/lib/pyq";
+import { practiceBankOf, pyqBankFilter } from "@/lib/pyq";
 import { schoolSubjectOf } from "@/lib/topic-stats";
 import PracticeAnswer from "@/models/PracticeAnswer";
 import Question from "@/models/Question";
@@ -14,13 +14,15 @@ export const dynamic = "force-dynamic";
  * strong and weak topics and topic practice (one record per student and
  * question: the latest try counts, so sending the same answer again changes
  * nothing). `saved` says whether it was kept. Only past-year questions of the
- * user's track can be checked; the student is always the one logged in.
+ * user's program's bank can be checked (none for programs without a bank);
+ * the student is always the one logged in.
  */
 export const POST = route(async (req) => {
   const session = await requireUser(req);
   const body = await readJson(req);
-  if (!isObjectId(body.questionId)) throw notFound("This question");
-  const q = await Question.findOne({ _id: body.questionId, ...pyqTrackFilter(session.user.track ?? "General") })
+  const bank = practiceBankOf(session.user);
+  if (!bank || !isObjectId(body.questionId)) throw notFound("This question");
+  const q = await Question.findOne({ _id: body.questionId, ...pyqBankFilter(bank) })
     .select("subject standard chapter topic answerType correctAnswer explanation explanationDiagramUrls")
     .lean<{ subject: string; standard: string; chapter: string; topic: string; answerType: string; correctAnswer: string; explanation: string; explanationDiagramUrls: string[] }>();
   if (!q) throw notFound("This question");

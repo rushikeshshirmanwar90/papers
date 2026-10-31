@@ -1,6 +1,6 @@
 import { requireUser, type Session } from "@/lib/auth";
 import { HttpError, isObjectId, notFound, readJson, route } from "@/lib/http";
-import { announceTimetableChange, checkClashes, entriesOut, readEntry } from "@/lib/timetable";
+import { announceTimetableChange, checkClashes, entriesOut, readEntries } from "@/lib/timetable";
 import TimetableEntry, { type TimetableEntryDoc } from "@/models/TimetableEntry";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +19,9 @@ async function editable(session: Session, id: string): Promise<TimetableEntryDoc
 export const PATCH = route<Ctx>(async (req, { params }) => {
   const session = await requireUser(req, "tuition", "teacher");
   const entry = await editable(session, params.id);
-  const { fields } = await readEntry(session, await readJson(req), entry);
-  await checkClashes(fields, entry._id as never);
-  entry.set(fields);
+  const { entries } = await readEntries(session, await readJson(req), entry);
+  await checkClashes(entries, entry._id as never);
+  entry.set(entries[0]);
   await entry.save();
   await announceTimetableChange(session, entry.batchId, entry.subject);
   return { entry: (await entriesOut(session, [entry]))[0] };

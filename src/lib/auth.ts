@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { NextRequest } from "next/server";
 import { HttpError } from "@/lib/http";
-import type { Role } from "@/lib/school";
+import { programOf, type Role } from "@/lib/school";
 import Tuition from "@/models/Tuition";
 import User, { type UserDoc } from "@/models/User";
 
@@ -134,6 +134,7 @@ export async function publicUser(user: UserDoc) {
     phone: user.phone,
     tuition: { id: user.tuitionId ? String(user.tuitionId) : "", name: tuition?.name ?? "" },
     subjects: user.subjects ?? [],
+    program: programOf(user),
     track: user.track ?? null,
     standard: user.standard ?? null,
     batchId: user.batchId ? String(user.batchId) : null,

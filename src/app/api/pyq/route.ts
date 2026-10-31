@@ -1,7 +1,7 @@
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { route } from "@/lib/http";
-import { pyqFilter, readSubject } from "@/lib/pyq";
+import { practiceBankOf, pyqFilter, readSubject } from "@/lib/pyq";
 import PracticeAnswer from "@/models/PracticeAnswer";
 import Question from "@/models/Question";
 
@@ -12,16 +12,18 @@ const PAGE = 20;
 /**
  * Past-year questions to practise: ?subject=Physics[&chapter=…][&skip=0].
  * Newest papers first; each with the student's last answer if they tried it.
+ * Programs without a question bank get none (`available: false`).
  */
 export const GET = route(async (req) => {
   const session = await requireUser(req);
   const params = req.nextUrl.searchParams;
-  const track = session.user.track ?? "General";
-  const subject = readSubject(params.get("subject"), track);
+  const subject = readSubject(params.get("subject"), session.user);
   const chapter = params.get("chapter")?.trim() || null;
   const skip = Math.max(0, Math.min(Number(params.get("skip")) || 0, 100000));
+  const bank = practiceBankOf(session.user);
+  if (!bank) return { subject, chapter, total: 0, skip, nextSkip: null, questions: [], available: false };
 
-  const filter = pyqFilter(track, subject, chapter);
+  const filter = pyqFilter(bank, subject, chapter);
   const [total, questions] = await Promise.all([
     Question.countDocuments(filter),
     Question.find(filter)
@@ -41,6 +43,7 @@ export const GET = route(async (req) => {
     total,
     skip,
     nextSkip: skip + questions.length < total ? skip + questions.length : null,
+    available: true,
     questions: questions.map((q) => {
       const mine = answers.find((a) => String(a.questionId) === String(q._id));
       return { ...q, _id: String(q._id), mine: mine ? { selected: mine.selected, correct: mine.correct } : null };

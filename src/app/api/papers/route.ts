@@ -4,6 +4,9 @@ import Paper from "@/models/Paper";
 import Question from "@/models/Question";
 import { buildFilter } from "@/lib/queryFilters";
 
+// Database-backed results must be read at request time, not during a build.
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   await connectDB();
   const { searchParams } = new URL(req.url);

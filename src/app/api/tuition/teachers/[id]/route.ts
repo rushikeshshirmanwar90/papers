@@ -50,8 +50,9 @@ export const DELETE = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const teacher = await findMember(tuitionId, params.id, "teacher");
   await Batch.updateMany({ tuitionId }, { $pull: { teachers: { teacherId: teacher._id } } });
-  // Their weekly classes go; tests they set stay, for the students' results.
-  await TimetableEntry.deleteMany({ tuitionId, teacherId: teacher._id });
+  // Their weekly classes stay in the batches' timetables, without a teacher;
+  // tests they set stay, for the students' results.
+  await TimetableEntry.updateMany({ tuitionId, teacherId: teacher._id }, { $set: { teacherId: null } });
   // Their account stays (they may join another tuition); they leave this one.
   await User.updateOne({ _id: teacher._id }, { role: null, tuitionId: null, subjects: [], batchId: null });
   return { ok: true };

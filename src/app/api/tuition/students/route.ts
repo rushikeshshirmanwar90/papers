@@ -1,7 +1,7 @@
 import { hashPassword, requireUser } from "@/lib/auth";
-import { email, isObjectId, oneOf, password, readJson, route, text } from "@/lib/http";
-import { STANDARDS, TRACKS } from "@/lib/school";
-import { batchNames, readBatchId, studentOut } from "@/lib/tuition";
+import { email, isObjectId, password, readJson, route, text } from "@/lib/http";
+import { PROGRAM_INFO } from "@/lib/school";
+import { batchNames, mustFit, readNewStudent, readStudentBatch, studentOut } from "@/lib/tuition";
 import User, { type UserDoc } from "@/models/User";
 
 export const dynamic = "force-dynamic";
@@ -31,10 +31,18 @@ export const GET = route(async (req) => {
   return { students: students.map((s) => studentOut(s, names)) };
 });
 
-/** Enrolls a student with a starting password the tuition gives them. */
+/**
+ * Enrolls a student with a starting password the tuition gives them:
+ * { name, email, password, program (or an older app's track), standard, batchId?, phone?, parentPhone? }.
+ * With `program`: JEE or NEET, and the class is required. The batch must be
+ * of the student's program and class; it's optional.
+ */
 export const POST = route(async (req) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const body = await readJson(req);
+  const { program, standard } = readNewStudent(body);
+  const batch = await readStudentBatch(body.batchId, tuitionId);
+  mustFit({ program, standard }, batch);
   const student = (await User.create({
     role: "student",
     emailVerified: true,
@@ -43,9 +51,10 @@ export const POST = route(async (req) => {
     email: email(body),
     phone: text(body, "phone", { max: 20 }) ?? "",
     parentPhone: text(body, "parentPhone", { max: 20 }) ?? "",
-    track: oneOf(body, "track", TRACKS, "a track"),
-    standard: body.standard ? oneOf(body, "standard", STANDARDS, "a class") : undefined,
-    batchId: await readBatchId(body.batchId, tuitionId),
+    program,
+    track: PROGRAM_INFO[program].track,
+    standard,
+    batchId: batch?._id ?? null,
     passwordHash: await hashPassword(password(body)),
   })) as UserDoc;
   return { student: studentOut(student, await batchNames(tuitionId)) };

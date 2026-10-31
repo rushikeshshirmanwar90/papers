@@ -1,6 +1,25 @@
 import { Types } from "mongoose";
 import { badRequest, isObjectId, listOf, notFound, oneOf, text } from "@/lib/http";
-import { STANDARDS, SUBJECTS, SUBJECTS_BY_TRACK, TRACKS, type SchoolStandard, type SchoolSubject, type Track } from "@/lib/school";
+import {
+  academicYearOf,
+  fitProblem,
+  isOffered,
+  notOffered,
+  parseAcademicYear,
+  PROGRAM_INFO,
+  programFromTrack,
+  programOf,
+  PROGRAMS,
+  STANDARDS,
+  SUBJECTS,
+  subjectProblem,
+  TRACKS,
+  type Program,
+  type SchoolStandard,
+  type SchoolSubject,
+  type Track,
+} from "@/lib/school";
+import type { TimetableSummary } from "@/lib/timetable";
 import Batch, { type BatchDoc, type BatchSlot } from "@/models/Batch";
 import User, { type UserDoc } from "@/models/User";
 
@@ -9,6 +28,7 @@ import User, { type UserDoc } from "@/models/User";
 // to the signed-in user's tuition.
 
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const minutesOf = (time: string) => {
   const [, h, m] = TIME.exec(time)!;
   return Number(h) * 60 + Number(m);
@@ -36,7 +56,15 @@ export function readSchedule(value: unknown): BatchSlot[] {
     if (minutesOf(end) <= minutesOf(start)) throw badRequest(`Class slot ${i + 1} must end after it starts.`);
     return { day, start, end };
   });
-  return slots.sort((a, b) => a.day - b.day || minutesOf(a.start) - minutesOf(b.start));
+  slots.sort((a, b) => a.day - b.day || minutesOf(a.start) - minutesOf(b.start));
+  // Classes of one batch can't overlap (back to back is fine).
+  for (let i = 1; i < slots.length; i++) {
+    const [before, after] = [slots[i - 1], slots[i]];
+    if (before.day === after.day && minutesOf(after.start) < minutesOf(before.end)) {
+      throw badRequest(`Two classes overlap on ${DAY_NAMES[after.day]}: ${before.start}–${before.end} and ${after.start}–${after.end}.`);
+    }
+  }
+  return slots;
 }
 
 /** Minutes of class a week. */
@@ -61,25 +89,69 @@ export async function readBatchTeachers(value: unknown, tuitionId: string, subje
   return entries.filter((e) => (seen.has(e.subject) ? false : (seen.add(e.subject), true)));
 }
 
-/** The batch's fields from a create or edit request. */
-export async function readBatch(body: Record<string, unknown>, tuitionId: string, existing?: BatchDoc) {
-  const track = body.track !== undefined ? oneOf(body, "track", TRACKS, "a track") : (existing?.track as Track);
-  if (!track) throw badRequest("Choose a track: NEET, JEE or General.");
-  const allowed = SUBJECTS_BY_TRACK[track];
-  const subjects =
-    body.subjects !== undefined
-      ? listOf(body, "subjects", SUBJECTS, "Subjects")
-      : existing && body.track === undefined
-      ? existing.subjects
-      : allowed;
-  const outside = subjects.filter((s) => !allowed.includes(s));
-  if (outside.length) throw badRequest(`${outside.join(", ")} isn't part of the ${track} track.`);
-  if (!subjects.length) throw badRequest("Pick at least one subject.");
+/**
+ * The program from { program } or, from older app versions, { track }.
+ * A legacy track keeps `current` when it's that program's track (an older
+ * app editing an MHT-CET batch sends track "General"). undefined: unchanged.
+ */
+export function readProgram(body: Record<string, unknown>, current: Program | null): Program | undefined {
+  if (body.program !== undefined) {
+    const program = oneOf(body, "program", PROGRAMS, "a program");
+    if (body.track !== undefined && body.track !== null && oneOf(body, "track", TRACKS, "a track") !== PROGRAM_INFO[program].track) {
+      throw badRequest(`The track doesn't match ${PROGRAM_INFO[program].label}.`);
+    }
+    return program;
+  }
+  if (body.track !== undefined) {
+    const track = oneOf(body, "track", TRACKS, "a track");
+    return current && PROGRAM_INFO[current].track === track ? current : programFromTrack(track);
+  }
+  return undefined;
+}
 
-  const fields: Partial<BatchDoc> & Record<string, unknown> = { track, subjects };
+/** The academic year from a request, as "2026-2027". */
+export function readAcademicYear(value: unknown): string {
+  const year = parseAcademicYear(value);
+  if (!year) throw badRequest("Enter the academic year as a year and the next, like 2026-2027.");
+  return year;
+}
+
+/**
+ * The batch's fields from a create or edit request. Requests that name a
+ * `program` (this app version) must give the class, 11th or 12th, and get
+ * this academic year unless they give one. Older requests (track only) keep
+ * their old rules, so older app versions still work.
+ */
+export async function readBatch(body: Record<string, unknown>, tuitionId: string, existing?: BatchDoc) {
+  const current = existing ? programOf(existing) : null;
+  const program = readProgram(body, current) ?? current;
+  if (!program) throw badRequest("Choose a program.");
+  const byProgram = body.program !== undefined;
+  const changed = program !== current;
+  // New batches, and moves to another program, only for the offered programs.
+  if (byProgram && changed && !isOffered(program)) throw badRequest(notOffered(program));
+
+  const subjects =
+    body.subjects !== undefined ? listOf(body, "subjects", SUBJECTS, "Subjects") : existing && !changed ? existing.subjects : [...PROGRAM_INFO[program].subjects];
+  const problem = subjectProblem(program, subjects);
+  if (problem) throw badRequest(problem);
+
+  const fields: Partial<BatchDoc> & Record<string, unknown> = { program, track: PROGRAM_INFO[program].track, subjects };
   if (body.name !== undefined || !existing) fields.name = text(body, "name", { required: true, max: 80, label: "a batch name" });
-  if (body.standard !== undefined) {
-    fields.standard = body.standard === null || body.standard === "" ? undefined : oneOf(body, "standard", STANDARDS, "a class");
+  const given = (value: unknown) => value !== undefined && value !== null && value !== "";
+  if (given(body.standard)) {
+    fields.standard = oneOf(body, "standard", STANDARDS, "the class");
+  } else if (byProgram && (body.standard !== undefined || !existing)) {
+    throw badRequest("Choose the class: 11th or 12th.");
+  } else if (body.standard !== undefined) {
+    fields.standard = undefined; // an older app's "11th & 12th"
+  }
+  if (given(body.academicYear)) {
+    fields.academicYear = readAcademicYear(body.academicYear);
+  } else if (body.academicYear !== undefined && existing?.academicYear) {
+    throw badRequest("Choose the academic year.");
+  } else if (byProgram && !existing) {
+    fields.academicYear = academicYearOf();
   }
   if (body.venue !== undefined) fields.venue = text(body, "venue", { max: 200 }) ?? "";
   if (body.schedule !== undefined) fields.schedule = readSchedule(body.schedule);
@@ -90,6 +162,24 @@ export async function readBatch(body: Record<string, unknown>, tuitionId: string
     fields.teachers = existing.teachers.filter((t) => subjects.includes(t.subject));
   }
   return fields;
+}
+
+/**
+ * Refuses a change of the batch's program or class while any of its
+ * students would no longer fit it. Students are never changed for it.
+ */
+export async function mustKeepStudentsFitting(batch: BatchDoc, before: { program: Program | null; standard: SchoolStandard | null }) {
+  if (programOf(batch) === before.program && (batch.standard ?? null) === before.standard) return;
+  const students = await User.find({ tuitionId: batch.tuitionId, role: "student", batchId: batch._id })
+    .select("name program track standard")
+    .lean<{ name: string; program?: Program; track?: Track; standard?: SchoolStandard }[]>();
+  const misfits = students.filter((s) => fitProblem(s, batch));
+  if (!misfits.length) return;
+  const names = misfits.slice(0, 3).map((s) => s.name).join(", ");
+  const count = misfits.length === 1 ? "1 student" : `${misfits.length} students`;
+  throw badRequest(
+    `${count} in this batch (${names}${misfits.length > 3 ? "…" : ""}) ${misfits.length === 1 ? "is" : "are"} in another program or class. Move them to another batch first, or keep the batch's program and class.`
+  );
 }
 
 export async function findBatch(tuitionId: string, id: unknown) {
@@ -116,12 +206,19 @@ export async function teacherNames(tuitionId: string): Promise<NameMap> {
   return new Map(teachers.map((t) => [String(t._id), t.name]));
 }
 
-export function batchOut(batch: BatchDoc, names: NameMap, studentCount: number) {
+/**
+ * A batch as the app gets it. `classes` sums up its subject timetable
+ * (TimetableEntry); `schedule` and `weeklyMinutes` are the older time-only
+ * slots, kept for older app versions.
+ */
+export function batchOut(batch: BatchDoc, names: NameMap, studentCount: number, classes?: TimetableSummary) {
   return {
     id: String(batch._id),
     name: batch.name,
+    program: programOf(batch),
     track: batch.track,
     standard: batch.standard ?? null,
+    academicYear: batch.academicYear ?? null,
     subjects: batch.subjects,
     venue: batch.venue,
     schedule: batch.schedule.map(({ day, start, end }) => ({ day, start, end })),
@@ -132,6 +229,7 @@ export function batchOut(batch: BatchDoc, names: NameMap, studentCount: number) 
       subject: t.subject,
     })),
     studentCount,
+    ...(classes ? { classes } : {}),
   };
 }
 
@@ -168,6 +266,7 @@ export function studentOut(student: UserDoc, batchNames: NameMap) {
     email: student.email,
     phone: student.phone,
     parentPhone: student.parentPhone ?? "",
+    program: programOf(student),
     track: student.track ?? null,
     standard: student.standard ?? null,
     batch: batchId ? { id: batchId, name: batchNames.get(batchId) ?? "" } : null,
@@ -182,6 +281,36 @@ export async function batchNames(tuitionId: string): Promise<NameMap> {
   return new Map(batches.map((b) => [String(b._id), b.name]));
 }
 
+/** The batch from a request, checked to be this tuition's; null clears it. */
+export async function readStudentBatch(value: unknown, tuitionId: string): Promise<BatchDoc | null> {
+  if (value === null || value === "" || value === undefined) return null;
+  const batch = isObjectId(value) ? ((await Batch.findOne({ _id: value, tuitionId })) as BatchDoc | null) : null;
+  if (!batch) throw badRequest("Pick one of your batches.");
+  return batch;
+}
+
+/**
+ * A student's program and class from a create or accept request. Requests
+ * that name a `program` (this app version) need an offered program and the
+ * class; older requests (track only) keep their old rules.
+ */
+export function readNewStudent(body: Record<string, unknown>): { program: Program; standard: SchoolStandard | undefined } {
+  const program = readProgram(body, null);
+  if (!program) throw badRequest("Choose the student's program.");
+  const standard = body.standard ? oneOf(body, "standard", STANDARDS, "a class") : undefined;
+  if (body.program !== undefined) {
+    if (!isOffered(program)) throw badRequest(notOffered(program));
+    if (!standard) throw badRequest("Choose the student's class: 11th or 12th.");
+  }
+  return { program, standard };
+}
+
+/** Refuses putting a student in a batch of another program or class. */
+export function mustFit(student: Parameters<typeof fitProblem>[0], batch: BatchDoc | null) {
+  const problem = batch ? fitProblem(student, batch) : null;
+  if (problem) throw badRequest(`${problem} Change the student's program or class first, or pick another batch.`);
+}
+
 /** The batch id from a request, checked to be this tuition's; null clears it. */
 export async function readBatchId(value: unknown, tuitionId: string): Promise<Types.ObjectId | null> {
   if (value === null || value === "" || value === undefined) return null;
@@ -189,4 +318,4 @@ export async function readBatchId(value: unknown, tuitionId: string): Promise<Ty
   return new Types.ObjectId(value);
 }
 
-export type { SchoolStandard, SchoolSubject, Track };
+export type { Program, SchoolStandard, SchoolSubject, Track };

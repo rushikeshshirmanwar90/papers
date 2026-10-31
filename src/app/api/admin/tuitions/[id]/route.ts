@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { requireAdmin } from "@/lib/admin";
 import { isObjectId, notFound, readJson, route, text } from "@/lib/http";
+import { PROGRAM_INFO, programOf, type Program, type Track } from "@/lib/school";
 import { weeklyMinutes } from "@/lib/tuition";
 import Batch, { type BatchDoc } from "@/models/Batch";
 import TestAttempt from "@/models/TestAttempt";
@@ -27,9 +28,9 @@ export const GET = route<Ctx>(async (req, { params }) => {
   const [owner, people, batches, tests] = await Promise.all([
     User.findOne({ tuitionId: tid, role: "tuition" }).select("email lastLoginAt").lean<{ _id: Types.ObjectId; email: string; lastLoginAt: Date | null }>(),
     User.find({ tuitionId: tid, role: { $in: ["teacher", "student"] } })
-      .select("name email phone role active lastLoginAt track standard batchId subjects createdAt")
+      .select("name email phone role active lastLoginAt program track standard batchId subjects createdAt")
       .sort({ name: 1 })
-      .lean<{ _id: Types.ObjectId; name: string; email: string; phone: string; role: string; active: boolean; lastLoginAt: Date | null; track?: string; standard?: string; batchId?: Types.ObjectId | null; subjects: string[]; createdAt: Date }[]>(),
+      .lean<{ _id: Types.ObjectId; name: string; email: string; phone: string; role: string; active: boolean; lastLoginAt: Date | null; program?: Program; track?: Track; standard?: string; batchId?: Types.ObjectId | null; subjects: string[]; createdAt: Date }[]>(),
     Batch.find({ tuitionId: tid }).sort({ name: 1 }) as Promise<BatchDoc[]>,
     TestRoom.find({ tuitionId: tid }).select("title batchId questions opensAt closesAt createdAt").sort({ createdAt: -1 }).limit(50).lean<{ _id: Types.ObjectId; title: string; batchId: Types.ObjectId; questions: unknown[]; opensAt: Date; closesAt: Date | null; createdAt: Date }[]>(),
   ]);
@@ -37,6 +38,10 @@ export const GET = route<Ctx>(async (req, { params }) => {
     { $match: { testId: { $in: tests.map((t) => t._id) }, submittedAt: { $ne: null } } },
     { $group: { _id: "$testId", n: { $sum: 1 } } },
   ]);
+  const programLabel = (p: { program?: Program; track?: Track }) => {
+    const program = programOf(p);
+    return program ? PROGRAM_INFO[program].label : null;
+  };
   const batchName = (id?: Types.ObjectId | null) => (id ? batches.find((b) => String(b._id) === String(id))?.name ?? null : null);
   const teacherName = (id: Types.ObjectId) => people.find((p) => String(p._id) === String(id))?.name ?? "Removed teacher";
 
@@ -47,6 +52,8 @@ export const GET = route<Ctx>(async (req, { params }) => {
       id: String(b._id),
       name: b.name,
       track: b.track,
+      program: PROGRAM_INFO[programOf(b)!].label,
+      academicYear: b.academicYear ?? null,
       standard: b.standard ?? null,
       subjects: b.subjects,
       venue: b.venue,
@@ -55,7 +62,7 @@ export const GET = route<Ctx>(async (req, { params }) => {
       students: people.filter((p) => p.role === "student" && String(p.batchId) === String(b._id)).length,
     })),
     teachers: people.filter((p) => p.role === "teacher").map((p) => ({ id: String(p._id), name: p.name, email: p.email, phone: p.phone, active: p.active, lastLoginAt: p.lastLoginAt, subjects: p.subjects })),
-    students: people.filter((p) => p.role === "student").map((p) => ({ id: String(p._id), name: p.name, email: p.email, phone: p.phone, active: p.active, lastLoginAt: p.lastLoginAt, track: p.track ?? null, standard: p.standard ?? null, batch: batchName(p.batchId) })),
+    students: people.filter((p) => p.role === "student").map((p) => ({ id: String(p._id), name: p.name, email: p.email, phone: p.phone, active: p.active, lastLoginAt: p.lastLoginAt, track: p.track ?? null, program: programLabel(p), standard: p.standard ?? null, batch: batchName(p.batchId) })),
     tests: tests.map((t) => ({
       id: String(t._id),
       title: t.title,
