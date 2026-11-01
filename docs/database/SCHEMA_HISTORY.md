@@ -4,6 +4,24 @@ Newest first. Each entry lists only what changed. The current full shape of the
 enrollment-related models is in [SCHEMA_CURRENT.md](SCHEMA_CURRENT.md); each
 data migration has its own file under [migrations/](migrations/).
 
+## 2026-11-01: Test scheduling (migration `2026-11-01-test-scheduling`)
+
+Tests always have a closing time, and are listed by when they open.
+
+| Model | Change |
+|---|---|
+| `testrooms` | `closesAt` is now required (it was nullable: "open until closed"). One development test without one was given `opensAt + 24 h`. New index `tuitionId_1_batchId_1_opensAt_-1`. |
+
+No document was deleted. `testattempts`, `questions`, `paper` and every other collection were not written;
+their counts were compared before and after. Rollback: `--rollback` restores `closesAt: null` for the
+recorded test and drops the index. Backups of `testrooms`, `testattempts` and `schemamigrations` were
+taken outside the repository before the change.
+
+API: creating a test takes `startNow: true` (opens at the server's clock) or a future `opensAt`, and a
+`closesAt` at least `durationMinutes` after opening. Editing is only for tests that haven't opened and
+have no attempts; an open test can only be closed early. Starting an attempt is refused after
+`closesAt − durationMinutes`.
+
 ## 2026-10-31: Teacher invitations (migration 002)
 
 Teachers join with an institute-wide teacher code that reuses the student

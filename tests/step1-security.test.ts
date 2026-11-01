@@ -93,6 +93,7 @@ async function seed() {
     title: "Unit test",
     durationMinutes: 30,
     opensAt: new Date(Date.now() - 60000),
+    closesAt: new Date(Date.now() + 86_400_000),
     questions: [{ sourceId: testedQ._id, subject: "Physics", questionText: "Q1 original", optionA: "1", optionB: "2", optionC: "3", optionD: "4", correctAnswer: "A" }],
   });
 

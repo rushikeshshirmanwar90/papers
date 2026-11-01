@@ -54,7 +54,7 @@ async function seed() {
 
   const question = { subject: "Physics", questionText: "Secret question", optionA: "1", optionB: "2", optionC: "3", optionD: "4", correctAnswer: "A", explanation: "Secret solution" };
   const room = (title: string, opensAt: Date, batchId = batch._id) =>
-    TestRoom.create({ tuitionId: tuition._id, batchId, teacherId: teacher._id, title, durationMinutes: 30, opensAt, questions: [question] });
+    TestRoom.create({ tuitionId: tuition._id, batchId, teacherId: teacher._id, title, durationMinutes: 30, opensAt, closesAt: new Date(opensAt.getTime() + 86_400_000), questions: [question] });
 
   const open = await room("Open test", new Date(Date.now() - 60_000));
   const scheduled = await room("Scheduled test", new Date(Date.now() + 2 * 86_400_000));

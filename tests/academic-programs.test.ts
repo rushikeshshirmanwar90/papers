@@ -174,6 +174,7 @@ async function seed() {
     questions: [{ questionText: "q", optionA: "1", optionB: "2", optionC: "3", optionD: "4", correctAnswer: "A", answerType: "MCQ" }],
     durationMinutes: 30,
     opensAt: new Date(Date.now() - 3600_000),
+    closesAt: new Date(Date.now() + 86_400_000),
   });
   const attempt = await TestAttempt.create({ testId: test1._id, tuitionId: tuition._id, batchId: legacyJee._id, studentId: legacyJeeStudent._id, answers: [], score: 4, maxScore: 4, startedAt: new Date(), submittedAt: new Date() });
   ids.attempt = String(attempt._id);

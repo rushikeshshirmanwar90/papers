@@ -24,7 +24,16 @@ export interface TestQuestion {
   explanationDiagramUrls: string[];
 }
 
-/** A test a teacher sets for a batch, with a time limit and when it opens and closes. */
+/**
+ * A test a teacher sets for a batch.
+ *
+ * Times are UTC instants. The window (opensAt to closesAt) is separate from
+ * the time limit (durationMinutes) each student gets once they start, so the
+ * last moment to start is closesAt minus the time limit. Its status
+ * (scheduled, open, closed) isn't stored: see statusOf in lib/tests.ts.
+ * Question count and maximum marks follow from `questions` and
+ * `marksPerQuestion`, so they aren't stored either.
+ */
 export interface TestRoomDoc extends Document {
   tuitionId: Types.ObjectId;
   batchId: Types.ObjectId;
@@ -38,8 +47,8 @@ export interface TestRoomDoc extends Document {
   negativeMarks: number;
   durationMinutes: number;
   opensAt: Date;
-  /** null: open until the teacher closes it. */
-  closesAt: Date | null;
+  /** Closing the test early ("Close now") sets this to that moment. */
+  closesAt: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -82,11 +91,13 @@ const TestRoomSchema = new Schema<TestRoomDoc>(
     negativeMarks: { type: Number, default: 0, min: 0, max: 100 },
     durationMinutes: { type: Number, required: true, min: 1, max: 600 },
     opensAt: { type: Date, required: true },
-    closesAt: { type: Date, default: null },
+    closesAt: { type: Date, required: true },
   },
   { timestamps: true }
 );
 
 TestRoomSchema.index({ tuitionId: 1, createdAt: -1 });
+// Test lists: a tuition's tests (or some batches') by when they open.
+TestRoomSchema.index({ tuitionId: 1, batchId: 1, opensAt: -1 });
 
 export default models.TestRoom || model<TestRoomDoc>("TestRoom", TestRoomSchema);

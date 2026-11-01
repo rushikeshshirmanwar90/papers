@@ -1,7 +1,7 @@
 import type { Session } from "@/lib/auth";
 import { HttpError } from "@/lib/http";
 import { cleanAnswer, scoreAnswers } from "@/lib/marking";
-import { statusOf } from "@/lib/tests";
+import { lastStartOf, statusOf } from "@/lib/tests";
 import TestAttempt, { type TestAttemptDoc } from "@/models/TestAttempt";
 import type { TestRoomDoc } from "@/models/TestRoom";
 
@@ -53,6 +53,9 @@ export async function startAttempt(test: TestRoomDoc, session: Session): Promise
   const status = statusOf(test);
   if (status === "scheduled") throw new HttpError(400, "This test hasn't opened yet.");
   if (status === "closed") throw new HttpError(400, "This test has closed.");
+  // Starting late would cut the time limit short, so the last start is closing time minus the time limit.
+  const lastStart = lastStartOf(test);
+  if (lastStart && Date.now() > lastStart.getTime()) throw new HttpError(400, "It's too late to start this test: there isn't enough time left for the full time limit.");
   try {
     return (await TestAttempt.create({
       tuitionId: test.tuitionId,

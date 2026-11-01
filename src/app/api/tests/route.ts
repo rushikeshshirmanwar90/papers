@@ -2,8 +2,9 @@ import { requireUser } from "@/lib/auth";
 import { badRequest, isObjectId, readJson, route, text } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
 import { membersOf, pushToUsers } from "@/lib/push";
-import { batchFor } from "@/lib/teaching";
-import { readQuestions, readWhen, testSummaries } from "@/lib/tests";
+import { batchFor, mustTeach } from "@/lib/teaching";
+import { SUBJECTS, programOf, questionBankOf, type SchoolSubject } from "@/lib/school";
+import { readDuration, readMarking, readQuestions, readWhen, resolveSchedule, testSummaries } from "@/lib/tests";
 import { Types } from "mongoose";
 import TestAttempt from "@/models/TestAttempt";
 import TestRoom, { type TestRoomDoc } from "@/models/TestRoom";
@@ -44,36 +45,41 @@ export const GET = route(async (req) => {
   };
 });
 
-const number = (value: unknown, fallback: number, min: number, max: number, label: string) => {
-  if (value === undefined || value === null || value === "") return fallback;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < min || n > max) throw badRequest(`${label} must be from ${min} to ${max}.`);
-  return n;
-};
-
 /**
  * Sets a test for a batch:
- * { batchId, title, durationMinutes, opensAt?, closesAt?, marksPerQuestion?, negativeMarks?, subject?, standard?, questions: […] }
+ * { batchId, title, subject, standard?, durationMinutes, marksPerQuestion?, negativeMarks?, questions: […],
+ *   startNow: true, closesAt }  opens at the server's clock now, or
+ * { …, opensAt, closesAt }      opens later (in the future).
+ * Times are ISO instants (UTC). The window must fit the whole time limit.
  */
 export const POST = route(async (req) => {
   const session = await requireUser(req, "tuition", "teacher");
   const body = await readJson(req);
   const batch = await batchFor(session, body.batchId);
-  const opensAt = readWhen(body.opensAt, "The start time", new Date())!;
-  const closesAt = readWhen(body.closesAt, "The end time", null);
-  if (closesAt && closesAt <= opensAt) throw badRequest("The test must close after it opens.");
+  // Only JEE and NEET have questions; other programs never borrow theirs.
+  if (!questionBankOf(programOf(batch))) throw badRequest(`There is no question bank for ${batch.name}'s program yet, so a test can't be set for it.`);
+  const subject = text(body, "subject", { required: true, max: 40, label: "a subject" })!;
+  if (!(SUBJECTS as readonly string[]).includes(subject)) throw badRequest("Pick one of the batch's subjects.");
+  mustTeach(session, batch, subject as SchoolSubject);
+
+  const durationMinutes = readDuration(body.durationMinutes, 60);
+  const { opensAt, closesAt } = resolveSchedule({
+    startNow: body.startNow === true,
+    opensAt: readWhen(body.opensAt, "The start time", null),
+    closesAt: readWhen(body.closesAt, "The end time", null),
+    durationMinutes,
+  });
 
   const test = (await TestRoom.create({
     tuitionId: session.tuitionId,
     batchId: batch._id,
     teacherId: session.user._id,
     title: text(body, "title", { required: true, max: 120, label: "a test name" }),
-    subject: text(body, "subject", { max: 40 }) ?? "",
-    standard: text(body, "standard", { max: 10 }) ?? "",
+    subject,
+    standard: text(body, "standard", { max: 10 }) ?? batch.standard ?? "",
     questions: readQuestions(body.questions),
-    marksPerQuestion: number(body.marksPerQuestion, 4, 0, 100, "Marks per question"),
-    negativeMarks: number(body.negativeMarks, 0, 0, 100, "Negative marks"),
-    durationMinutes: number(body.durationMinutes, 60, 1, 600, "The time limit (minutes)"),
+    ...readMarking(body),
+    durationMinutes,
     opensAt,
     closesAt,
   })) as TestRoomDoc;

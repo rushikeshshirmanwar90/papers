@@ -71,6 +71,26 @@ A batch takes students through a code only when it is active, offered (JEE or NE
 
 `name`, `address`, `phone`, `email`, `active`. The old `joinCode` field was removed (see SCHEMA_HISTORY.md, teacher invitations). Indexes: `_id_`.
 
+## `testrooms` (a test set for a batch)
+
+| Field | Type | Notes |
+|---|---|---|
+| `tuitionId`, `batchId`, `teacherId` | ObjectId | Scoped to the session's tuition on every query. |
+| `title`, `subject`, `standard` | string | `subject` is one the teacher teaches in the batch. |
+| `questions` | array | Copies of bank questions taken when the test was made; `sourceId` points at the original `questions` document, which a test never changes. |
+| `marksPerQuestion`, `negativeMarks` | number | Right answer +marks; wrong answer −negativeMarks (not more than `marksPerQuestion`). |
+| `durationMinutes` | number | Each student's time limit, from when they start. Separate from the window below. |
+| `opensAt`, `closesAt` | Date (UTC) | Both required. The window must be at least `durationMinutes` long; the last permitted start is `closesAt − durationMinutes`. "Close now" sets `closesAt` to that moment. |
+| `createdAt`, `updatedAt` | Date | |
+
+Not stored, so they can't disagree with the fields above: the status (upcoming = `scheduled`,
+live = `open`, completed = `closed`, from `opensAt`/`closesAt` in `statusOf`), the question
+count (`questions.length`) and the maximum marks (`questions.length × marksPerQuestion`).
+
+Indexes: `_id_`, `batchId_1`, `teacherId_1`, `tuitionId_1_createdAt_-1`, `tuitionId_1_batchId_1_opensAt_-1`.
+A student's attempt is in `testattempts` (unique per `testId` + `studentId`); an upcoming test can only
+be edited or cancelled while it has none.
+
 ## Academic content (never touched by enrollment)
 
 `paper`, `questions`, `testrooms`, `testattempts`, `attempts`, `practiceanswers`, `selfassessments`, `syllabusprogresses`, `chapterweightages`, `storedfiles`, `timetableentries`, `announcements`. Enrollment code does not read or write them.

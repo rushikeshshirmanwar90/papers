@@ -2,7 +2,7 @@ import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { HttpError, badRequest, readJson, route, text } from "@/lib/http";
 import { attemptOut, currentAttempt, questionsFor } from "@/lib/attempts";
-import { maxScoreOf, mustEdit, readWhen, statusOf, testFor, testSummaries } from "@/lib/tests";
+import { maxScoreOf, mustEdit, readDuration, readMarking, readQuestions, readWhen, resolveSchedule, statusOf, testFor, testSummaries } from "@/lib/tests";
 import TestAttempt from "@/models/TestAttempt";
 import User from "@/models/User";
 
@@ -63,40 +63,55 @@ export const GET = route<Ctx>(async (req, { params }) => {
   };
 });
 
-/** Edits the test: title, time limit, open and close times, or { closeNow: true }. */
+/**
+ * Edits an upcoming test that no student has started: title, questions,
+ * marking, time limit, and when it opens (or startNow) and closes. The same
+ * schedule rules as setting one apply, checked against the clock now.
+ * Once it has opened the only change is { closeNow: true }, on an open test.
+ */
 export const PATCH = route<Ctx>(async (req, { params }) => {
   const session = await requireUser(req, "tuition", "teacher");
   const { test, canEdit } = await testFor(session, params.id);
   mustEdit(canEdit);
   const body = await readJson(req);
+  const status = statusOf(test);
+
+  if (body.closeNow === true) {
+    if (status === "scheduled") throw badRequest("This test hasn't opened yet. Cancel it instead.");
+    if (status === "closed") throw badRequest("This test has already closed.");
+    test.closesAt = new Date();
+    await test.save();
+    return { test: (await testSummaries([test]))[0], maxScore: maxScoreOf(test) };
+  }
+
+  if (status !== "scheduled") throw badRequest("This test has already opened, so it can't be edited. You can close it early.");
+  if (await TestAttempt.exists({ testId: test._id })) throw badRequest("Students have already started this test, so it can't be edited.");
 
   if (body.title !== undefined) test.title = text(body, "title", { required: true, max: 120, label: "a test name" })!;
-  if (body.durationMinutes !== undefined) {
-    const n = Number(body.durationMinutes);
-    if (!Number.isInteger(n) || n < 1 || n > 600) throw badRequest("The time limit must be 1 to 600 minutes.");
-    test.durationMinutes = n;
-  }
-  if (body.opensAt !== undefined) {
-    const opensAt = readWhen(body.opensAt, "The start time", test.opensAt);
-    if (!opensAt) throw badRequest("Set when the test opens.");
-    if (statusOf(test) !== "scheduled" && opensAt.getTime() !== test.opensAt.getTime()) {
-      throw badRequest("The test has already opened; its start time can't change.");
-    }
-    test.opensAt = opensAt;
-  }
-  if (body.closesAt !== undefined) test.closesAt = readWhen(body.closesAt, "The end time", test.closesAt);
-  if (body.closeNow === true) test.closesAt = new Date();
-  if (test.closesAt && test.closesAt < test.opensAt) throw badRequest("The test must close after it opens.");
+  if (body.questions !== undefined) test.set("questions", readQuestions(body.questions));
+  const marking = readMarking(body, test);
+  test.marksPerQuestion = marking.marksPerQuestion;
+  test.negativeMarks = marking.negativeMarks;
+  test.durationMinutes = readDuration(body.durationMinutes, test.durationMinutes);
+  const { opensAt, closesAt } = resolveSchedule({
+    startNow: body.startNow === true,
+    opensAt: readWhen(body.opensAt, "The start time", test.opensAt),
+    closesAt: readWhen(body.closesAt, "The end time", test.closesAt),
+    durationMinutes: test.durationMinutes,
+  });
+  test.opensAt = opensAt;
+  test.closesAt = closesAt;
   await test.save();
   return { test: (await testSummaries([test]))[0], maxScore: maxScoreOf(test) };
 });
 
-/** Deletes the test and everyone's attempts at it. */
+/** Cancels an upcoming test that no student has started. Questions in the bank are never touched. */
 export const DELETE = route<Ctx>(async (req, { params }) => {
   const session = await requireUser(req, "tuition", "teacher");
   const { test, canEdit } = await testFor(session, params.id);
   mustEdit(canEdit);
-  await TestAttempt.deleteMany({ testId: test._id });
+  if (statusOf(test) !== "scheduled") throw badRequest("This test has already opened, so it can't be cancelled. You can close it early.");
+  if (await TestAttempt.exists({ testId: test._id })) throw badRequest("Students have already started this test, so it can't be cancelled.");
   await test.deleteOne();
   return { ok: true };
 });
