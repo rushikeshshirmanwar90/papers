@@ -1,7 +1,7 @@
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { HttpError, badRequest, readJson, route, text } from "@/lib/http";
-import { attemptOut, currentAttempt, questionsFor } from "@/lib/attempts";
+import { attemptOut, currentAttempt, finalizeExpired, questionsFor, resultsReleased } from "@/lib/attempts";
 import { maxScoreOf, mustEdit, readDuration, readMarking, readQuestions, readWhen, resolveSchedule, statusOf, testFor, testSummaries } from "@/lib/tests";
 import TestAttempt from "@/models/TestAttempt";
 import User from "@/models/User";
@@ -20,13 +20,12 @@ export const GET = route<Ctx>(async (req, { params }) => {
   const { test, canEdit } = await testFor(session, params.id);
 
   // A student sees the test, their attempt, and the questions: without
-  // answers while they're taking it, with answers once submitted or closed.
+  // answers until the test has closed (submitting early doesn't release them).
   if (session.role === "student") {
     if (statusOf(test) === "scheduled") throw new HttpError(404, "This test was not found.");
     const attempt = await currentAttempt(test, session);
-    const submitted = !!attempt?.submittedAt;
-    // Closed: answers for those who never started; anyone mid-test finishes first.
-    const reveal = submitted || (statusOf(test) === "closed" && !attempt);
+    // Closed: answers for everyone; anyone still mid-test was scored by currentAttempt.
+    const reveal = resultsReleased(test);
     return {
       test: (await testSummaries([test]))[0],
       attempt: attemptOut(test, attempt),
@@ -35,6 +34,8 @@ export const GET = route<Ctx>(async (req, { params }) => {
     };
   }
 
+  // Attempts whose time ran out while nobody was looking are scored before the results are listed.
+  await finalizeExpired(test);
   const [students, attempts] = await Promise.all([
     User.find({ tuitionId: session.tuitionId, role: "student", batchId: test.batchId }).select("name").sort({ name: 1 }).lean<{ _id: Types.ObjectId; name: string }[]>(),
     TestAttempt.find({ testId: test._id }).lean<{ studentId: Types.ObjectId; score: number; correctCount: number; wrongCount: number; skippedCount: number; submittedAt: Date | null; timeTakenSeconds: number }[]>(),
@@ -81,6 +82,8 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
     if (status === "closed") throw badRequest("This test has already closed.");
     test.closesAt = new Date();
     await test.save();
+    // New starts are refused from now on; students still mid-test are scored with what they saved.
+    await finalizeExpired(test);
     return { test: (await testSummaries([test]))[0], maxScore: maxScoreOf(test) };
   }
 

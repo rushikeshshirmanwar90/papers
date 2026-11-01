@@ -25,6 +25,8 @@ export interface TestAttemptDoc extends Document {
   /** null while the student is still answering. */
   submittedAt: Date | null;
   timeTakenSeconds: number;
+  /** Counts answer saves, so scoring can tell whether an answer arrived while it was reading them (see finalize in lib/attempts.ts). */
+  rev: number;
 }
 
 const TestAnswerSchema = new Schema<TestAnswer>(
@@ -50,6 +52,7 @@ const TestAttemptSchema = new Schema<TestAttemptDoc>({
   startedAt: { type: Date, required: true },
   submittedAt: { type: Date, default: null },
   timeTakenSeconds: { type: Number, default: 0 },
+  rev: { type: Number, default: 0 },
 });
 
 // One attempt per student per test.

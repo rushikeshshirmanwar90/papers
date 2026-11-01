@@ -91,6 +91,11 @@ Indexes: `_id_`, `batchId_1`, `teacherId_1`, `tuitionId_1_createdAt_-1`, `tuitio
 A student's attempt is in `testattempts` (unique per `testId` + `studentId`); an upcoming test can only
 be edited or cancelled while it has none.
 
+`testattempts.rev` (Number, default 0; added in Phase 2A, no migration: a missing value counts as 0) goes up
+by one with every answer save. Scoring (`finalize` in `lib/attempts.ts`) only writes a result if `rev` is
+still what it read, so an answer saved at the same moment is never left out. Answers, correctness flags and
+solutions reach a student only once the test has closed (`resultsReleased`); submitting early shows the score only.
+
 ## Academic content (never touched by enrollment)
 
 `paper`, `questions`, `testrooms`, `testattempts`, `attempts`, `practiceanswers`, `selfassessments`, `syllabusprogresses`, `chapterweightages`, `storedfiles`, `timetableentries`, `announcements`. Enrollment code does not read or write them.

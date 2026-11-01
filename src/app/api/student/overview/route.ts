@@ -28,12 +28,15 @@ export const GET = route(async (req) => {
   const subjects = programSubjects(programOf(user));
   const batch = user.batchId ? ((await Batch.findOne({ _id: user.batchId, tuitionId: session.tuitionId })) as BatchDoc | null) : null;
 
-  const [stats, lastAttempt] = await Promise.all([
+  const [stats, attempts] = await Promise.all([
     topicStatsByStudent([user._id as Types.ObjectId]),
-    TestAttempt.findOne({ studentId: user._id, submittedAt: { $ne: null } }).sort({ submittedAt: -1 }).lean<{ testId: Types.ObjectId; score: number; maxScore: number; submittedAt: Date }>(),
+    TestAttempt.find({ studentId: user._id, submittedAt: { $ne: null } }).sort({ submittedAt: -1 }).limit(20).lean<{ testId: Types.ObjectId; score: number; maxScore: number; submittedAt: Date }[]>(),
   ]);
+  // Marks only show once the test has closed.
+  const closedTests = await TestRoom.find({ _id: { $in: attempts.map((a) => a.testId) }, closesAt: { $lte: new Date() } }).select("title").lean<{ _id: Types.ObjectId; title: string }[]>();
+  const lastAttempt = attempts.find((a) => closedTests.some((t) => String(t._id) === String(a.testId)));
   const myStats = (stats.get(String(user._id)) ?? []).filter((s) => s.level !== "not-enough");
-  const lastTest = lastAttempt ? await TestRoom.findById(lastAttempt.testId).select("title").lean<{ title: string }>() : null;
+  const lastTest = lastAttempt ? closedTests.find((t) => String(t._id) === String(lastAttempt.testId)) : null;
   const insight = {
     weak: myStats.filter((s) => s.level === "weak").sort((a, b) => a.accuracy - b.accuracy).slice(0, 5),
     strong: myStats.filter((s) => s.level === "strong").sort((a, b) => b.accuracy - a.accuracy).slice(0, 5),

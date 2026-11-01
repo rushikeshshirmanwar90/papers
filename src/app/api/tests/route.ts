@@ -40,7 +40,7 @@ export const GET = route(async (req) => {
   return {
     tests: summaries.map((t) => {
       const a = attempts.find((x) => String(x.testId) === t.id);
-      return { ...t, mine: a ? { state: a.submittedAt ? "submitted" : "in-progress", score: a.submittedAt ? a.score : null } : null };
+      return { ...t, mine: a ? { state: a.submittedAt ? "submitted" : "in-progress", score: a.submittedAt && t.status === "closed" ? a.score : null } : null };
     }),
   };
 });

@@ -368,10 +368,10 @@ describe("students and the last permitted start", () => {
     await json(await m.startRoute.POST(req("POST", `/api/tests/${id}/start`, "student"), { params: { id } }), 200);
     const done = await json(await m.submitRoute.POST(req("POST", `/api/tests/${id}/submit`, "student", { answers: [{ index: 0, selected: "A" }, { index: 1, selected: "D" }] }), { params: { id } }), 200);
     assert.equal(done.attempt.state, "submitted");
-    assert.equal(done.attempt.result.correct, 1);
-    assert.equal(done.attempt.result.wrong, 1);
-    assert.equal(done.attempt.result.score, 3); // +4 right, −1 wrong
-    assert.equal(done.attempt.result.maxScore, 8);
+    // The test is still live, so only the confirmation shows; the marks are stored (+4 right, −1 wrong).
+    assert.deepEqual(Object.keys(done.attempt.result), ["submittedAt"]);
+    const stored = await m.TestAttempt.findOne({ testId: id }).lean<{ score: number; correctCount: number; wrongCount: number; maxScore: number }>();
+    assert.deepEqual([stored?.correctCount, stored?.wrongCount, stored?.score, stored?.maxScore], [1, 1, 3, 8]);
   });
 
   test("the question bank was never changed by any of this", async () => {
