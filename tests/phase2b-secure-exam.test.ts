@@ -269,10 +269,96 @@ describe("secure exam: interruptions", () => {
     assert.equal((await doc(id))!.submittedAt, null);
   });
 
-  test("invalid answers sent with a violation report are refused", async () => {
+  test("a confirmed violation with a valid answer list is finalized with those answers", async () => {
     const id = await room();
     await start(id);
-    await away(id, { type: "away", awayMs: 60_000, answers: [{ index: 9, selected: "A" }] }, "s1", 400);
+    await save(id, [{ index: 0, selected: "A" }]);
+    const body = await away(id, { type: "away", awayMs: 10_001, answers: [{ index: 1, selected: "B" }, { index: 2, selected: "D" }] });
+    assert.equal(body.attempt.endedReason, "violation");
+    assert.deepEqual(body.attempt.answers.map((a: { selected: string | null }) => a.selected), ["A", "B", "D"]);
+  });
+
+  // Invalid answers are never stored, but they must not stop the attempt from ending.
+  const badAnswers: [string, unknown][] = [
+    ["an index outside the test", [{ index: 9, selected: "A" }]],
+    ["a negative or fractional index", [{ index: -1, selected: "A" }, { index: 1.5, selected: "A" }]],
+    ["an option that doesn't exist", [{ index: 1, selected: "Z" }]],
+    ["a list longer than the test", [0, 1, 2, 0].map((index) => ({ index, selected: "A" }))],
+    ["a payload that isn't a list", "all of them"],
+    ["entries that aren't answers", [null, 7, "x"]],
+    ["a valid answer next to an invalid one", [{ index: 1, selected: "B" }, { index: 9, selected: "A" }]],
+  ];
+  for (const [label, answers] of badAnswers) {
+    test(`a confirmed violation still ends the attempt when it carries ${label}; saved answers are kept and nothing invalid is stored`, async () => {
+      const id = await room();
+      await start(id);
+      await save(id, [{ index: 0, selected: "A" }]);
+      const body = await away(id, { type: "away", awayMs: 60_000, answers });
+      assert.equal(body.attempt.state, "submitted");
+      assert.equal(body.attempt.endedReason, "violation");
+      assert.deepEqual(body.attempt.answers.map((a: { selected: string | null }) => a.selected), ["A", null, null]);
+      const a = await doc(id);
+      assert.ok(a!.submittedAt);
+      assert.equal(a!.endedReason, "violation");
+      assert.deepEqual(a!.events.map((e) => e.ended), [true]);
+      // Nothing more can be done to it.
+      await save(id, [{ index: 1, selected: "B" }], "s1", 400);
+      assert.equal((await start(id)).attempt.state, "submitted");
+    });
+  }
+
+  test("an interruption of exactly the limit does not end the attempt", async () => {
+    const id = await room();
+    await start(id);
+    const body = await away(id, { type: "away", awayMs: 10_000, answers: [{ index: 9, selected: "A" }] });
+    assert.equal(body.attempt.state, "in-progress");
+    assert.equal((await doc(id))!.submittedAt, null);
+  });
+
+  test("repeated violation reports, valid or not, leave one submission and one final state", async () => {
+    const id = await room();
+    await start(id);
+    const first = await away(id, { type: "away", awayMs: 60_000, answers: [{ index: 9, selected: "A" }] });
+    const again = await away(id, { type: "away", awayMs: 90_000, answers: [{ index: 0, selected: "A" }] });
+    assert.equal(again.attempt.result.submittedAt, first.attempt.result.submittedAt);
+    assert.ok(again.attempt.answers.every((a: { selected: string | null }) => a.selected === null));
+    assert.equal((await attemptsOf(id)).length, 1);
+    assert.equal((await doc(id))!.events.length, 1);
+  });
+
+  test("answers saved at the same moment as a violation are either scored or refused, never lost silently", async () => {
+    const id = await room();
+    await start(id);
+    const saves = [0, 1, 2].map((index) => m.answersRoute.PUT(req("PUT", `/api/tests/${id}/answers`, "s1", { answers: [{ index, selected: "ABC"[index] }] }), { params: { id } }));
+    const report = m.eventsRoute.POST(req("POST", `/api/tests/${id}/events`, "s1", { type: "away", awayMs: 60_000, answers: [{ index: 9, selected: "A" }] }), { params: { id } });
+    const results = await Promise.all([...saves, report]);
+    assert.equal(results[3].status, 200);
+    const a = await doc(id);
+    assert.ok(a!.submittedAt);
+    const kept = new Map(a!.answers.map((x) => [x.index, x.selected]));
+    results.slice(0, 3).forEach((r, index) => {
+      // An acknowledged save (200) is in the final answers.
+      if (r.status === 200) assert.equal(kept.get(index), "ABC"[index]);
+      else assert.equal(r.status, 400);
+    });
+  });
+
+  test("expired attempts with invalid answers in a violation report are still finalized once", async () => {
+    const id = await room({ durationMinutes: 10 });
+    await start(id);
+    await save(id, [{ index: 0, selected: "A" }]);
+    await backdate(id, "s1", 11 * MIN);
+    const body = await away(id, { type: "away", awayMs: 60_000, answers: [{ index: 9, selected: "A" }] });
+    assert.equal(body.attempt.state, "submitted");
+    assert.equal((await doc(id))!.answers[0].selected, "A");
+  });
+
+  test("a violation report can't be used without logging in or across students", async () => {
+    const id = await room();
+    await start(id, "s1");
+    const res = await m.eventsRoute.POST(new NextRequest(`${BASE}/api/tests/${id}/events`, { method: "POST", body: JSON.stringify({ type: "away", awayMs: 60_000 }) }), { params: { id } });
+    assert.equal(res.status, 401);
+    await away(id, { type: "away", awayMs: 60_000 }, "s4", 404);
     assert.equal((await doc(id))!.submittedAt, null);
   });
 

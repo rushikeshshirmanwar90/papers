@@ -96,6 +96,20 @@ by one with every answer save. Scoring (`finalize` in `lib/attempts.ts`) only wr
 still what it read, so an answer saved at the same moment is never left out. Answers, correctness flags and
 solutions reach a student only once the test has closed (`resultsReleased`); submitting early shows the score only.
 
+Secure exam (Phase 2B; no migration: missing values read as `null` / `[]`):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `testattempts.endedReason` | `"violation"` \| `null` (default `null`) | Set when the attempt was ended because the app was away longer than `AWAY_LIMIT_MS` (10 s). `null` for a normal submit or timeout. An ended attempt can't be restarted or edited. |
+| `testattempts.events` | array, newest 50 kept | Interruptions reported by the phone (`POST /api/tests/[id]/events`), recorded by `recordEvent`. |
+| `events[].type` | `"away"` | The only event type. |
+| `events[].at` | Date | When the server received the report. |
+| `events[].awayMs` | Number | Time out of the foreground as measured by the phone (capped at 24 h). |
+| `events[].ended` | Boolean | True when the server judged this interruption long enough to end the attempt. |
+
+A violation always ends the attempt, even if the report carries invalid answers: those are not stored, and the
+answers already saved are scored.
+
 ## Academic content (never touched by enrollment)
 
 `paper`, `questions`, `testrooms`, `testattempts`, `attempts`, `practiceanswers`, `selfassessments`, `syllabusprogresses`, `chapterweightages`, `storedfiles`, `timetableentries`, `announcements`. Enrollment code does not read or write them.

@@ -186,8 +186,10 @@ export async function recordEvent(test: TestRoomDoc, attempt: TestAttemptDoc, bo
     try {
       await saveAnswers(test, fresh, body.answers);
     } catch (error) {
-      // Too late to change answers: end it with what was saved. Invalid answers are still refused.
-      if (!(error instanceof AttemptClosedError)) throw error;
+      // The violation stands whatever came with it. Answers that are too late or invalid are not stored
+      // (saveAnswers checks them before writing anything), and the attempt is ended with what was saved.
+      // Only that refusal is absorbed; database and programming errors still surface.
+      if (!(error instanceof HttpError && error.status >= 400 && error.status < 500)) throw error;
     }
   }
   return finalize(test, ((await TestAttempt.findById(attempt._id)) as TestAttemptDoc | null) ?? fresh, new Date(), "violation");
