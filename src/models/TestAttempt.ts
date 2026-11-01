@@ -9,6 +9,16 @@ export interface TestAnswer {
   correct: boolean | null;
 }
 
+/** Something that happened to the app during the attempt, reported by the student's phone. */
+export interface TestAttemptEvent {
+  type: "away";
+  at: Date;
+  /** How long the app was out of the foreground, as measured by the phone. */
+  awayMs: number;
+  /** True when the server judged this long enough to end the attempt. */
+  ended: boolean;
+}
+
 /** A student's go at a test: started when they open it, scored when they submit. */
 export interface TestAttemptDoc extends Document {
   tuitionId: Types.ObjectId;
@@ -27,6 +37,10 @@ export interface TestAttemptDoc extends Document {
   timeTakenSeconds: number;
   /** Counts answer saves, so scoring can tell whether an answer arrived while it was reading them (see finalize in lib/attempts.ts). */
   rev: number;
+  /** Why the attempt ended early, when it did: "violation" = the app was left for longer than allowed. null otherwise. */
+  endedReason: "violation" | null;
+  /** The last few interruptions reported during the attempt (see recordEvent in lib/attempts.ts). */
+  events: TestAttemptEvent[];
 }
 
 const TestAnswerSchema = new Schema<TestAnswer>(
@@ -34,6 +48,16 @@ const TestAnswerSchema = new Schema<TestAnswer>(
     index: { type: Number, required: true },
     selected: { type: String, default: null },
     correct: { type: Boolean, default: null },
+  },
+  { _id: false }
+);
+
+const TestAttemptEventSchema = new Schema<TestAttemptEvent>(
+  {
+    type: { type: String, enum: ["away"], required: true },
+    at: { type: Date, required: true },
+    awayMs: { type: Number, required: true },
+    ended: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -53,6 +77,8 @@ const TestAttemptSchema = new Schema<TestAttemptDoc>({
   submittedAt: { type: Date, default: null },
   timeTakenSeconds: { type: Number, default: 0 },
   rev: { type: Number, default: 0 },
+  endedReason: { type: String, enum: ["violation", null], default: null },
+  events: { type: [TestAttemptEventSchema], default: [] },
 });
 
 // One attempt per student per test.

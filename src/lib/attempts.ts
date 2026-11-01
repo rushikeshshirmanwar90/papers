@@ -36,7 +36,7 @@ const expired = (test: TestRoomDoc, attempt: Pick<TestAttemptDoc, "startedAt">, 
  * again" error rather than score stale answers. Whoever loses a race to
  * finalize gets the stored result back.
  */
-export async function finalize(test: TestRoomDoc, attempt: TestAttemptDoc, now = new Date()): Promise<TestAttemptDoc> {
+export async function finalize(test: TestRoomDoc, attempt: TestAttemptDoc, now = new Date(), endedReason: "violation" | null = null): Promise<TestAttemptDoc> {
   let current: TestAttemptDoc | null = attempt;
   for (let tries = 0; current && !current.submittedAt; tries++) {
     if (tries >= MAX_TRIES) throw new HttpError(409, "Your answers are still being saved. Try again in a moment.");
@@ -57,6 +57,7 @@ export async function finalize(test: TestRoomDoc, attempt: TestAttemptDoc, now =
           wrongCount: result.wrongCount,
           skippedCount: result.skippedCount,
           submittedAt: end,
+          ...(endedReason ? { endedReason } : {}),
           timeTakenSeconds: Math.max(0, Math.round((end.getTime() - current.startedAt.getTime()) / 1000)),
         },
       },
@@ -159,12 +160,47 @@ export async function saveAnswers(test: TestRoomDoc, attempt: TestAttemptDoc, ra
   return saved.filter((a) => a.selected !== null).length;
 }
 
+/** How long the app may be out of the foreground before the attempt is ended. Short enough that switching to another app counts; long enough to ride out a system dialog. */
+export const AWAY_LIMIT_MS = 10_000;
+const MAX_EVENTS = 50;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The phone reports the app came back after being away ({ type: "away", awayMs },
+ * plus the answers it holds). The event is recorded; if the app was away longer
+ * than AWAY_LIMIT_MS the attempt is ended with the answers saved so far plus
+ * these, and marked as a violation. The limit lives here, not in the app.
+ * A phone that is offline, killed, or never reports can't be caught this way:
+ * the attempt then simply runs to its original deadline.
+ */
+export async function recordEvent(test: TestRoomDoc, attempt: TestAttemptDoc, body: Record<string, unknown>): Promise<TestAttemptDoc> {
+  if (attempt.submittedAt) return attempt;
+  const awayMs = body.awayMs;
+  if (body.type !== "away" || typeof awayMs !== "number" || !Number.isFinite(awayMs) || awayMs < 0) throw new HttpError(400, "That isn't a valid event.");
+  const ended = awayMs > AWAY_LIMIT_MS;
+  const event = { type: "away" as const, at: new Date(), awayMs: Math.min(Math.round(awayMs), DAY_MS), ended };
+  await TestAttempt.updateOne({ _id: attempt._id, submittedAt: null }, { $push: { events: { $each: [event], $slice: -MAX_EVENTS } } });
+  const fresh = ((await TestAttempt.findById(attempt._id)) as TestAttemptDoc | null) ?? attempt;
+  if (!ended || fresh.submittedAt) return fresh;
+  if (body.answers !== undefined) {
+    try {
+      await saveAnswers(test, fresh, body.answers);
+    } catch (error) {
+      // Too late to change answers: end it with what was saved. Invalid answers are still refused.
+      if (!(error instanceof AttemptClosedError)) throw error;
+    }
+  }
+  return finalize(test, ((await TestAttempt.findById(attempt._id)) as TestAttemptDoc | null) ?? fresh, new Date(), "violation");
+}
+
 /** What the student sees of their attempt. */
 export function attemptOut(test: TestRoomDoc, attempt: TestAttemptDoc | null) {
   if (!attempt) return null;
   return {
     state: attempt.submittedAt ? ("submitted" as const) : ("in-progress" as const),
     startedAt: attempt.startedAt,
+    /** "violation" when the attempt was ended for leaving the app; the student can't restart it. */
+    endedReason: attempt.endedReason ?? null,
     deadline: deadlineOf(test, attempt),
     /** The server's clock now, so the app can work out the time left without trusting the phone's. */
     serverTime: new Date(),
