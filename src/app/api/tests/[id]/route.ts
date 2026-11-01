@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { HttpError, badRequest, readJson, route, text } from "@/lib/http";
 import { attemptOut, currentAttempt, finalizeExpired, questionsFor, resultsReleased } from "@/lib/attempts";
 import { maxScoreOf, mustEdit, readDuration, readMarking, readQuestions, readWhen, resolveSchedule, statusOf, testFor, testSummaries } from "@/lib/tests";
+import { ownAnalytics } from "@/lib/test-results";
 import TestAttempt from "@/models/TestAttempt";
 import User from "@/models/User";
 
@@ -31,6 +32,8 @@ export const GET = route<Ctx>(async (req, { params }) => {
       attempt: attemptOut(test, attempt),
       // Before starting, only the summary; the questions come with the attempt.
       questions: attempt || reveal ? questionsFor(test, reveal) : [],
+      // Own rank and topic performance: only for a submitted attempt, and only once the test has closed.
+      analytics: attempt?.submittedAt && reveal ? await ownAnalytics(test, attempt.toObject()) : null,
     };
   }
 
