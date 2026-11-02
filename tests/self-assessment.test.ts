@@ -387,6 +387,9 @@ describe("self-assessment routes", () => {
     const list = await json(await m.listRoute.GET(req("GET", "/api/self-assessments", "student"), {}), 200);
     assert.equal(list.assessments[0].id, id);
     assert.equal(list.assessments[0].result.weakTopics, 1);
+    // The list reads only summary fields, yet says exactly what the full result does.
+    assert.deepEqual(list.assessments[0], JSON.parse(JSON.stringify(done.assessment)));
+    assert.ok(!JSON.stringify(list).includes("Secret"), "no question text or solutions in the list");
 
     // Submitted: no more changes.
     await json(await m.answersRoute.PUT(req("PUT", `/api/self-assessments/${id}/answers`, "student", { answers }), ctx(id)), 400);
@@ -430,6 +433,25 @@ describe("self-assessment routes", () => {
     assert.equal(later.assessment.state, "submitted");
     assert.equal(later.assessment.result.timeTakenSeconds, 20 * 60, "capped at the time limit");
     assert.equal(later.assessment.result.skipped, 10);
+  });
+
+  test("time up while away: the list submits it too, marked in full", async () => {
+    const made = await create();
+    const id = made.assessment.id;
+    const started = await json(await m.startRoute.POST(req("POST", `/api/self-assessments/${id}/start`, "student"), ctx(id)), 200);
+    const first = started.questions[0].index;
+    await json(await m.answersRoute.PUT(req("PUT", `/api/self-assessments/${id}/answers`, "student", { answers: [{ index: first, selected: "A" }] }), ctx(id)), 200);
+    await m.SelfAssessment.updateOne({ _id: id }, { startedAt: new Date(Date.now() - 60 * 60 * 1000) });
+    const list = await json(await m.listRoute.GET(req("GET", "/api/self-assessments", "student"), {}), 200);
+    const row = list.assessments.find((a: { id: string }) => a.id === id);
+    assert.equal(row.state, "submitted");
+    assert.equal(row.result.correct, 1, "the saved answer is marked against the answer key");
+    assert.equal(row.result.skipped, 9);
+    assert.equal(row.result.score, 4);
+    assert.equal(row.result.timeTakenSeconds, 20 * 60);
+    const saved = await m.SelfAssessment.findById(id).lean<{ submittedAt: Date | null; questions: { questionText: string }[] }>();
+    assert.ok(saved?.submittedAt, "saved as submitted");
+    assert.ok(saved?.questions.every((q) => q.questionText.startsWith("Secret")), "the questions are kept intact");
   });
 
   test("untimed tests have no deadline", async () => {

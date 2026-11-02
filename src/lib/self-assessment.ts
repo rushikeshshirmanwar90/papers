@@ -400,7 +400,7 @@ export function deadlineOf(a: Pick<SelfAssessmentDoc, "startedAt" | "durationMin
   return new Date(a.startedAt.getTime() + a.durationMinutes * 60 * 1000);
 }
 
-const timeUp = (a: SelfAssessmentDoc, now = Date.now()) => {
+const timeUp = (a: Pick<SelfAssessmentDoc, "startedAt" | "durationMinutes">, now = Date.now()) => {
   const deadline = deadlineOf(a);
   return !!deadline && now > deadline.getTime() + GRACE_MS;
 };
@@ -494,36 +494,53 @@ export async function finalize(a: SelfAssessmentDoc, now = new Date()) {
 
 // ─── What the app gets ─────────────────────────────────────────────────────
 
+/**
+ * What a summary reads: the assessment without its questions' content (only
+ * where each question is in the syllabus, and its level). A full document or
+ * a lean one read with SUMMARY_FIELDS both fit.
+ */
+type SummarySource = Pick<
+  SelfAssessmentDoc,
+  | "_id" | "title" | "subject" | "mix" | "scope" | "plan" | "basis" | "marksPerQuestion" | "negativeMarks" | "durationMinutes"
+  | "createdAt" | "startedAt" | "submittedAt" | "answers" | "score" | "maxScore" | "correctCount" | "wrongCount" | "skippedCount" | "timeTakenSeconds"
+> & { questions: Pick<TestQuestion, "standard" | "chapter" | "topic" | "difficulty">[] };
+
+/** The fields a list needs: everything but the questions' text, options, answers and solutions. */
+const SUMMARY_FIELDS =
+  "title subject mix scope plan basis marksPerQuestion negativeMarks durationMinutes createdAt startedAt submittedAt answers score maxScore correctCount wrongCount skippedCount timeTakenSeconds " +
+  "questions.standard questions.chapter questions.topic questions.difficulty";
+
 /** The topic report; questions and answers as plain objects (Mongoose sub-documents don't spread). */
-const reportOf = (a: SelfAssessmentDoc) =>
+const reportOf = (a: SummarySource) =>
   buildReport(
-    a.questions.map((q) => ({ standard: q.standard ?? "", chapter: q.chapter ?? "", topic: q.topic ?? "", difficulty: q.difficulty ?? "" })),
-    a.answers.map((x) => ({ index: x.index, selected: x.selected ?? null, correct: x.correct ?? null }))
+    (a.questions ?? []).map((q) => ({ standard: q.standard ?? "", chapter: q.chapter ?? "", topic: q.topic ?? "", difficulty: q.difficulty ?? "" })),
+    (a.answers ?? []).map((x) => ({ index: x.index, selected: x.selected ?? null, correct: x.correct ?? null }))
   );
 
 /** One line for lists: what it covers, how it's set up, and the result once submitted. */
-export function summaryOf(a: SelfAssessmentDoc) {
+export function summaryOf(a: SummarySource, report: ReturnType<typeof reportOf> | null = stateOf(a) === "submitted" ? reportOf(a) : null) {
   const state = stateOf(a);
-  const report = state === "submitted" ? reportOf(a) : null;
+  // A lean read has no schema defaults; every saved test has these, but stay safe.
+  const questionCount = (a.questions ?? []).length;
   return {
     id: String(a._id),
     title: a.title,
     subject: a.subject,
     mix: a.mix,
     state,
-    scope: a.scope.map((s) => ({ standard: s.standard, chapter: s.chapter, topics: s.topics })),
-    questionCount: a.questions.length,
-    plan: { Easy: a.plan?.Easy ?? 0, Medium: a.plan?.Medium ?? 0, Hard: a.plan?.Hard ?? 0, fresh: a.plan?.fresh ?? 0, requested: a.plan?.requested ?? a.questions.length },
+    scope: (a.scope ?? []).map((s) => ({ standard: s.standard, chapter: s.chapter, topics: s.topics ?? [] })),
+    questionCount,
+    plan: { Easy: a.plan?.Easy ?? 0, Medium: a.plan?.Medium ?? 0, Hard: a.plan?.Hard ?? 0, fresh: a.plan?.fresh ?? 0, requested: a.plan?.requested ?? questionCount },
     basis: { kind: a.basis?.kind ?? "fixed", accuracy: a.basis?.accuracy ?? null, answered: a.basis?.answered ?? 0 },
     marksPerQuestion: a.marksPerQuestion,
     negativeMarks: a.negativeMarks,
-    maxScore: a.questions.length * a.marksPerQuestion,
+    maxScore: questionCount * a.marksPerQuestion,
     durationMinutes: a.durationMinutes,
     createdAt: a.createdAt,
     startedAt: a.startedAt,
     deadline: deadlineOf(a),
     submittedAt: a.submittedAt,
-    answeredCount: a.answers.filter((x) => x.selected !== null).length,
+    answeredCount: (a.answers ?? []).filter((x) => (x.selected ?? null) !== null).length,
     result: report
       ? {
           score: a.score,
@@ -544,8 +561,10 @@ export function summaryOf(a: SelfAssessmentDoc) {
 export function detailOf(a: SelfAssessmentDoc) {
   const state = stateOf(a);
   const reveal = state === "submitted";
+  // Built once: the summary and the full report share it.
+  const report = reveal ? reportOf(a) : null;
   return {
-    assessment: summaryOf(a),
+    assessment: summaryOf(a, report),
     answers: a.answers.map((x) => ({ index: x.index, selected: x.selected, correct: reveal ? x.correct : null })),
     // Not shown before Start, so the questions can't be read ahead of the clock.
     questions:
@@ -569,15 +588,32 @@ export function detailOf(a: SelfAssessmentDoc) {
               ? { difficulty: q.difficulty, correctAnswer: q.correctAnswer, explanation: q.explanation, explanationDiagramUrls: q.explanationDiagramUrls }
               : {}),
           })),
-    report: reveal ? reportOf(a) : null,
+    report,
   };
 }
 
-/** The student's assessments, newest first; ones whose time ran out are finished first. */
+/**
+ * The student's assessments, newest first; ones whose time ran out are finished first.
+ * Only what the list shows is read: each test's questions (text, options and
+ * solutions) would otherwise come along, megabytes for a long list.
+ */
 export async function listFor(session: Session, subject: SchoolSubject | null) {
-  const list = (await SelfAssessment.find({ studentId: session.user._id, ...(subject ? { subject } : {}) })
+  const list = await SelfAssessment.find({ studentId: session.user._id, ...(subject ? { subject } : {}) })
     .sort({ createdAt: -1 })
-    .limit(50)) as SelfAssessmentDoc[];
-  for (const a of list) if (a.startedAt && !a.submittedAt && timeUp(a)) await finalize(a);
-  return list.map(summaryOf);
+    .limit(50)
+    .select(SUMMARY_FIELDS)
+    .lean<SummarySource[]>();
+  const summaries = [];
+  for (const a of list) {
+    if (a.startedAt && !a.submittedAt && timeUp(a)) {
+      // Marking needs the whole test: read it in full, still only the student's own.
+      const full = (await SelfAssessment.findOne({ _id: a._id, studentId: session.user._id })) as SelfAssessmentDoc | null;
+      if (!full) continue; // deleted meanwhile
+      await finalize(full);
+      summaries.push(summaryOf(full));
+      continue;
+    }
+    summaries.push(summaryOf(a));
+  }
+  return summaries;
 }
