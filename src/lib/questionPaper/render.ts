@@ -1,5 +1,7 @@
 import type { Browser } from "puppeteer-core";
 import { checkPdf, FIT_SCRIPT, PRINT_VIEWPORT_WIDTH_PX, type FitResult, type LayoutReport } from "./layoutFit";
+import { FIT_SLIDES_SCRIPT, type SlideFitResult } from "../smartSlides/html";
+import { SLIDE } from "../smartSlides/layout";
 
 // HTML to PDF with headless Chrome: @sparticuz/chromium's build on Linux
 // (Vercel), a local Chrome elsewhere (CHROME_PATH, else the usual install path).
@@ -82,12 +84,21 @@ async function dropBrowser() {
 }
 
 /** The paper printed, and what the measuring pass found (null when it didn't run). */
-interface Printed {
+interface Printed<R = FitResult> {
   pdf: Uint8Array;
-  fit: FitResult | null;
+  fit: R | null;
 }
 
-async function printOnce(html: string, timeoutMs: number, fit: boolean): Promise<Printed> {
+/** A measuring pass: the script Chrome evaluates, at the size the page prints at. */
+interface FitPass {
+  script: string;
+  width: number;
+  height: number;
+}
+
+const PAPER_FIT: FitPass = { script: FIT_SCRIPT, width: PRINT_VIEWPORT_WIDTH_PX, height: 1200 };
+
+async function printOnce<R>(html: string, timeoutMs: number, fit: FitPass | null): Promise<Printed<R>> {
   const page = await (await getBrowser()).newPage();
   try {
     await page.setJavaScriptEnabled(false);
@@ -100,13 +111,13 @@ async function printOnce(html: string, timeoutMs: number, fit: boolean): Promise
       }
     });
     await page.goto(PAGE_URL, { waitUntil: "load", timeout: Math.min(60000, timeoutMs) });
-    let fitted: FitResult | null = null;
+    let fitted: R | null = null;
     if (fit) {
       // Measure at the width the paper prints at. The page runs no scripts of
       // its own (JavaScript is off); this is Chrome's own evaluation.
       await page.emulateMediaType("print");
-      await page.setViewport({ width: PRINT_VIEWPORT_WIDTH_PX, height: 1200 });
-      fitted = (await page.evaluate(FIT_SCRIPT)) as FitResult;
+      await page.setViewport({ width: fit.width, height: fit.height });
+      fitted = (await page.evaluate(fit.script)) as R;
     }
     const pdf = await page.pdf({
       preferCSSPageSize: true,
@@ -128,10 +139,10 @@ async function printOnce(html: string, timeoutMs: number, fit: boolean): Promise
  * every step (opening a page on a stuck Chrome has none), so on the deadline
  * Chrome itself is closed or killed: whatever it was doing stops.
  */
-async function printBy(html: string, deadline: number, fit: boolean): Promise<Printed> {
+async function printBy<R>(html: string, deadline: number, fit: FitPass | null): Promise<Printed<R>> {
   const left = deadline - Date.now();
   if (left <= 0) throw new RenderTimeoutError("The paper waited too long to be printed");
-  const work = printOnce(html, left, fit);
+  const work = printOnce<R>(html, left, fit);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new RenderTimeoutError(`Printing took over ${left} ms`)), left);
@@ -154,13 +165,13 @@ async function printBy(html: string, deadline: number, fit: boolean): Promise<Pr
 let queue: Promise<unknown> = Promise.resolve();
 let pending = 0;
 
-function enqueue(html: string, timeoutMs: number, fit: boolean): Promise<Printed> {
+function enqueue<R = FitResult>(html: string, timeoutMs: number, fit: FitPass | null): Promise<Printed<R>> {
   if (pending >= MAX_PENDING) return Promise.reject(new RenderBusyError("Too many papers are waiting to be printed"));
   pending++;
   const deadline = Date.now() + timeoutMs;
   const run = queue.then(async () => {
     try {
-      return await printBy(html, deadline, fit);
+      return await printBy<R>(html, deadline, fit);
     } catch (error) {
       // A crashed or closed Chrome takes the page with it: start a fresh one
       // and try once more. Anything else is a real failure.
@@ -169,7 +180,7 @@ function enqueue(html: string, timeoutMs: number, fit: boolean): Promise<Printed
       if (current?.connected) throw error;
       console.warn("[question-paper-pdf] Chrome stopped, starting it again:", error);
       await dropBrowser();
-      return printBy(html, deadline, fit);
+      return printBy<R>(html, deadline, fit);
     }
   });
   const settled = run.catch(() => {}).finally(() => {
@@ -185,7 +196,7 @@ function enqueue(html: string, timeoutMs: number, fit: boolean): Promise<Printed
  * RenderTimeoutError when it can't finish within timeoutMs of being asked.
  */
 export async function renderPdf(html: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Uint8Array> {
-  return (await enqueue(html, timeoutMs, false)).pdf;
+  return (await enqueue(html, timeoutMs, null)).pdf;
 }
 
 /**
@@ -199,7 +210,7 @@ export async function renderPaper(
   questions: number,
   timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<{ pdf: Uint8Array; layout: LayoutReport }> {
-  const { pdf, fit } = await enqueue(html, timeoutMs, true);
+  const { pdf, fit } = await enqueue(html, timeoutMs, PAPER_FIT);
   const issues = [...(fit?.issues ?? [])];
   let pages = 0;
   try {
@@ -213,4 +224,24 @@ export async function renderPaper(
   }
   const stats = fit?.stats ?? { equations: 0, equationsScaled: 0, optionsStacked: 0, figures: 0, rasterFigures: 0, keysResized: 0 };
   return { pdf, layout: { issues, stats: { ...stats, pages } } };
+}
+
+/**
+ * Prints a Smart PDF (one 16:9 page per slide) after Chrome has measured each
+ * slide and shrunk any question that doesn't fit its area (smartSlides/html.ts).
+ * The result lists the slides that still don't fit.
+ */
+export async function renderSlides(html: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<{ pdf: Uint8Array; fit: SlideFitResult }> {
+  const { pdf, fit } = await enqueue<SlideFitResult>(html, timeoutMs, {
+    script: FIT_SLIDES_SCRIPT,
+    width: SLIDE.width,
+    height: SLIDE.height,
+  });
+  return {
+    pdf,
+    fit: fit ?? {
+      issues: [{ severity: "warning", kind: "check-failed", where: "Slides", detail: "The slides could not be measured." }],
+      stats: { slides: 0, shrunk: 0 },
+    },
+  };
 }

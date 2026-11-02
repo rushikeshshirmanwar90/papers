@@ -4,6 +4,7 @@ import katex from "katex";
 import { splitLatex } from "./latex";
 import { PAGE_MARGIN_MM, TEXT_INSET_MM } from "./layoutFit";
 import { splitMath } from "./mathBreak";
+import type { SmartSlideSettings } from "../smartSlides/layout";
 
 // The question paper as one printable HTML page: an A4 sheet in a frame, the
 // institute's name over the paper's details, then the questions in two columns
@@ -49,6 +50,10 @@ export interface QuestionPaper {
   solutions: boolean;
   /** Refuse to make the PDF (rather than just report) when its layout has errors. */
   strictLayout: boolean;
+  /** "smart": one question per 16:9 slide with room to write (lib/smartSlides). Missing means the exam paper. */
+  format?: "exam" | "smart";
+  /** The Smart PDF's layout, when format is "smart". */
+  slides?: SmartSlideSettings;
 }
 
 /** Figures as data URIs, by URL; null for one that couldn't be loaded. */
@@ -82,7 +87,7 @@ function mathHtml(tex: string, display: boolean): string {
  * Text as HTML: escaped, line breaks kept, and the maths (\( \) and \[ \])
  * as MathML.
  */
-function richText(text: string | undefined): string {
+export function richText(text: string | undefined): string {
   return splitLatex(text ?? "")
     .map((piece) => {
       if (piece.kind === "text") return escapeHtml(piece.value).replace(/\n/g, "<br>");
@@ -186,7 +191,7 @@ const TEXT_STYLES = [
 const fontData = (file: string) => `url(data:font/woff2;base64,${readFileSync(path.join(FONT_FILES, file)).toString("base64")})`;
 
 let fontCss: string | null = null;
-function fontFaces(): string {
+export function fontFaces(): string {
   fontCss ??= [
     ...TEXT_STYLES.flatMap(({ weight, style, file }) =>
       Object.entries(TEXT_RANGES).map(

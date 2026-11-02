@@ -3,7 +3,8 @@ import { HttpError, badRequest, readBody, route } from "@/lib/http";
 import { embedFigures } from "@/lib/questionPaper/figures";
 import { figureUrlsOf, questionPaperHtml, type QuestionPaper } from "@/lib/questionPaper/html";
 import { PaperRequestError, parsePaper } from "@/lib/questionPaper/parse";
-import { RenderBusyError, RenderTimeoutError, renderPaper } from "@/lib/questionPaper/render";
+import { RenderBusyError, RenderTimeoutError, renderPaper, renderSlides } from "@/lib/questionPaper/render";
+import { smartSlidesHtml } from "@/lib/smartSlides/html";
 import type { LayoutReport } from "@/lib/questionPaper/layoutFit";
 import Tuition from "@/models/Tuition";
 
@@ -58,6 +59,7 @@ export const POST = route(async (req) => {
   // The name at the top is the signed-in account's own tuition, so one
   // institute's paper can't be printed under another's name.
   const tuition = await Tuition.findById(tuitionId).select("name phone").lean<{ name: string; phone?: string }>();
+  if (paper.format === "smart") return smartPdf(paper, tuition?.name ?? "", req.headers.get("host") ?? "");
   paper.institute = [tuition?.name, tuition?.phone].filter(Boolean).join(" - ");
   const figureUrls = figureUrlsOf(paper);
   if (figureUrls.length > MAX_FIGURES) {
@@ -120,3 +122,57 @@ export const POST = route(async (req) => {
     },
   });
 });
+
+/**
+ * A Smart PDF: one question per 16:9 slide, with the institute's name (no
+ * phone) at the top. A question that doesn't fit its slide, even with smaller
+ * text, is reported and no PDF is made: nothing is ever printed cut off.
+ */
+async function smartPdf(paper: QuestionPaper, instituteName: string, host: string): Promise<Response> {
+  paper.institute = instituteName;
+  const figureUrls = figureUrlsOf(paper);
+  if (figureUrls.length > MAX_FIGURES) {
+    throw badRequest(`These questions have ${figureUrls.length} figures; a PDF can have at most ${MAX_FIGURES}. Pick fewer questions.`);
+  }
+  const started = Date.now();
+  let printed: Awaited<ReturnType<typeof renderSlides>>;
+  try {
+    const figures = await embedFigures(figureUrls, host, FIGURES_BUDGET_MS);
+    printed = await renderSlides(smartSlidesHtml(paper, figures), RENDER_TIMEOUT_MS);
+  } catch (error) {
+    if (error instanceof RenderBusyError) throw new HttpError(503, "The server is busy making other PDFs. Try again in a minute.");
+    if (error instanceof RenderTimeoutError) throw new HttpError(504, "Making the PDF took too long. Try again, or pick fewer questions.");
+    console.error("[question-paper-pdf] smart PDF failed:", error);
+    throw new HttpError(500, "Could not make the PDF. Try again.");
+  }
+  const { pdf, fit } = printed;
+  const errors = fit.issues.filter((issue) => issue.severity === "error");
+  console.log(
+    `[question-paper-pdf] smart: ${paper.questions.length} questions, ${fit.stats.slides} slides, ${fit.stats.shrunk} shrunk, ` +
+      `${errors.length} errors, ${Math.round(pdf.length / 1024)} KB in ${Date.now() - started} ms`
+  );
+  if (errors.length) {
+    const numbers = errors.map((issue) => issue.where.replace(/^Question /, "")).slice(0, 8);
+    return Response.json(
+      {
+        error:
+          `Question ${numbers.join(", ")} ${numbers.length === 1 ? "is" : "are"} too long for a slide, even with smaller text. ` +
+          "Make the question area taller, pick a smaller font, or leave that question out.",
+        issues: errors.slice(0, 30),
+      },
+      { status: 422, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+  const filename = `${paper.title.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 80)}.pdf`;
+  return new Response(streamOf(pdf), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "Cache-Control": "no-store",
+      "X-Page-Count": String(fit.stats.slides),
+      "X-Render-Ms": String(Date.now() - started),
+      "X-Layout-Errors": "0",
+      "X-Layout-Warnings": String(fit.issues.length),
+    },
+  });
+}

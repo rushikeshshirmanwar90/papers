@@ -1,4 +1,5 @@
 import { DEFAULT_PAPER_TITLE, type PaperQuestion, type QuestionPaper } from "./html";
+import { normalizeSlideSettings } from "../smartSlides/layout";
 
 // Checks a request body and turns it into a QuestionPaper, with limits so one
 // request can't ask for an unbounded amount of work.
@@ -72,9 +73,11 @@ function day(value: unknown): string {
 export function parsePaper(body: unknown): QuestionPaper {
   if (!isRecord(body)) throw new PaperRequestError("Send the paper as a JSON object");
   const { questions, marksPerQuestion } = body;
-  const questionPaper = body.questionPaper !== false;
-  const answerKey = body.answerKey === true;
-  const solutions = body.solutions === true;
+  // A Smart PDF shows the questions only: never an answer key or solutions.
+  const smart = body.format === "smart";
+  const questionPaper = smart || body.questionPaper !== false;
+  const answerKey = !smart && body.answerKey === true;
+  const solutions = !smart && body.solutions === true;
   if (!questionPaper && !answerKey && !solutions) throw new PaperRequestError("Choose what to print: the questions, the answer key or the solutions");
   if (!Array.isArray(questions) || questions.length === 0) throw new PaperRequestError("Add at least one question");
   if (questions.length > MAX_QUESTIONS) throw new PaperRequestError(`A paper can have at most ${MAX_QUESTIONS} questions`);
@@ -96,5 +99,6 @@ export function parsePaper(body: unknown): QuestionPaper {
     solutions,
     strictLayout: body.strictLayout === true,
     questions: questions.map(question),
+    ...(smart ? { format: "smart" as const, slides: normalizeSlideSettings(body.slides) } : {}),
   };
 }
