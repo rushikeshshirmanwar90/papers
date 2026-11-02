@@ -137,6 +137,12 @@ function fakeBrowser(behaviour: Behaviour) {
         return {
           async setJavaScriptEnabled() {},
           async setRequestInterception() {},
+          async emulateMediaType() {},
+          async setViewport() {},
+          // The layout measuring pass: nothing to fix, nothing to report.
+          async evaluate() {
+            return { issues: [], stats: { equations: 0, equationsScaled: 0, optionsStacked: 0, figures: 0, rasterFigures: 0, keysResized: 0 } };
+          },
           on() {},
           async goto() {},
           pdf: () =>
@@ -232,6 +238,16 @@ describe("request validation", () => {
     await expectError(await post("teacher", appPaper(1, { questions: ["not a question"] })), 400);
     await expectError(await post("teacher", appPaper(1, { title: { $gt: "" } })), 400);
   });
+  test("paper details that aren't a set, a day or a length are refused (400)", async () => {
+    await expectError(await post("teacher", appPaper(1, { paperSet: 1 })), 400);
+    await expectError(await post("teacher", appPaper(1, { date: "30/08/2026" })), 400);
+    await expectError(await post("teacher", appPaper(1, { durationMinutes: "90" })), 400);
+    await expectError(await post("teacher", appPaper(1, { durationMinutes: 1.5 })), 400);
+    await expectError(await post("teacher", appPaper(1, { durationMinutes: 5000 })), 400);
+  });
+  test("a request that prints nothing is refused (400)", async () => {
+    await expectError(await post("teacher", appPaper(1, { questionPaper: false, answerKey: false, solutions: false })), 400);
+  });
   test("more than 300 questions are refused (400)", async () => {
     const body = await expectError(await post("teacher", appPaper(301)), 400);
     assert.match(body.error, /300/);
@@ -272,6 +288,113 @@ describe("PDF generation", { skip: haveChrome ? false : "Chrome isn't installed 
     const res = await post("owner", appPaper(1, { answerKey: false }));
     assert.equal(res.status, 200);
     assert.equal(Buffer.from(await res.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
+  });
+
+  /** The text of each page of a PDF. */
+  async function pageTexts(bytes: Uint8Array): Promise<string[]> {
+    const { loadPdfjs } = await import("@/lib/pdfjsNode");
+    const pdfjs = await loadPdfjs();
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true }).promise;
+    const texts: string[] = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const content = await (await doc.getPage(n)).getTextContent();
+      texts.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+    }
+    return texts;
+  }
+
+  test("the header is filled in from the account's own tuition and the paper's details, never from the request", { timeout: 120000 }, async () => {
+    const res = await post(
+      "teacher",
+      appPaper(2, { institute: "Someone else's institute", paperSet: "3", date: "2026-08-30", durationMinutes: 90 })
+    );
+    assert.equal(res.status, 200);
+    const [first] = await pageTexts(new Uint8Array(await res.arrayBuffer()));
+    assert.match(first, /Open tuition/);
+    assert.doesNotMatch(first, /Someone else/);
+    assert.match(first, /Subject\s*: Physics|Subject\s*:\s*Physics/);
+    assert.match(first, /Kinematics/, "the chapter is the heading");
+    assert.match(first, /Paper Set\s*: 3/);
+    assert.match(first, /30-08-2026/);
+    assert.match(first, /1H:30M/);
+    assert.match(first, /Section A/);
+    assert.match(first, /\(1\)/);
+    assert.match(first, /\(2\)/);
+  });
+
+  test("the paper's title is the heading on the questions, the answer key and the solutions; the chapter only when there is no title", { timeout: 120000 }, async () => {
+    const heading = async (extra: Record<string, unknown>) => {
+      const res = await post("teacher", appPaper(2, { answerKey: true, solutions: true, ...extra }));
+      assert.equal(res.status, 200);
+      return pageTexts(new Uint8Array(await res.arrayBuffer()));
+    };
+    // The questions' chapter is "Kinematics"; the teacher's title wins on every page that has a header.
+    const titled = await heading({ title: "EMI" });
+    const headed = titled.filter((t) => /Subject/.test(t));
+    assert.ok(headed.length >= 3, "questions, answer key and solutions each have a header");
+    for (const page of headed) {
+      assert.match(page, /\bEMI\b/);
+      assert.doesNotMatch(page, /Kinematics/);
+    }
+    // No title in the request: the chapter stands in.
+    const untitled = await heading({ title: "" });
+    for (const page of untitled.filter((t) => /Subject/.test(t))) assert.match(page, /Kinematics/);
+  });
+
+  test("the answer key starts on a new page and the solutions on another", { timeout: 120000 }, async () => {
+    const paper = appPaper(3, { answerKey: true, solutions: true });
+    paper.questions[1].explanation = "Because \\(a = 4t\\), so \\(a = 4\\) at \\(t = 1\\).";
+    paper.questions[2].correctAnswer = "";
+    const res = await post("teacher", paper);
+    assert.equal(res.status, 200);
+    const texts = await pageTexts(new Uint8Array(await res.arrayBuffer()));
+    const keyAt = texts.findIndex((t) => /Answer Key/.test(t));
+    const solutionsAt = texts.findIndex((t) => /\(Solutions\)/.test(t));
+    assert.ok(keyAt > 0, "the key is after the questions");
+    assert.ok(solutionsAt > keyAt, "the solutions are after the key");
+    assert.match(texts[keyAt], /1 - B/);
+    assert.match(texts[keyAt], /3 - –/, "an answer the bank lacks is a dash, not a guess");
+    assert.doesNotMatch(texts[keyAt], /\(1\)/, "no questions on the answer key page");
+    assert.match(texts[solutionsAt], /Solution:\(Correct Answer:B\)/);
+    assert.match(texts[solutionsAt], /Because/);
+    assert.match(texts[solutionsAt], /isn't in the question bank/, "a missing solution is said to be missing");
+  });
+
+  test("a layout problem is reported in the headers, and refused when strictLayout is asked for", { timeout: 120000 }, async () => {
+    const terms = (p: string) => Array.from({ length: 70 }, (_, i) => `${p}_{${i + 1}}`).join(" + ");
+    const tooWide = `$\\left(\\frac{${terms("a")}}{${terms("b")}}\\right)^2$`;
+    const paper = appPaper(2, { answerKey: false });
+    paper.questions[1].questionText = `Far too wide: ${tooWide}`;
+
+    const normal = await post("teacher", paper);
+    assert.equal(normal.status, 200, "the PDF is still made, with nothing clipped");
+    assert.equal(normal.headers.get("x-layout-errors"), "1");
+    assert.equal(Buffer.from(await normal.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
+
+    const strict = await post("teacher", { ...paper, strictLayout: true });
+    const body = await expectError(strict, 422);
+    assert.match(body.error, /layout problems/);
+    assert.equal(body.issues[0].kind, "equation-unreadable");
+    assert.equal(body.issues[0].where, "Question 2");
+
+    const fine = await post("teacher", appPaper(2, { strictLayout: true }));
+    assert.equal(fine.status, 200);
+    assert.equal(fine.headers.get("x-layout-errors"), "0");
+  });
+
+  test("separate PDFs: the paper has no answers, the answer key has no questions", { timeout: 120000 }, async () => {
+    const paperRes = await post("teacher", appPaper(4, { answerKey: false }));
+    const keyRes = await post("teacher", appPaper(4, { questionPaper: false, answerKey: true }));
+    assert.equal(paperRes.status, 200);
+    assert.equal(keyRes.status, 200);
+    const paperTexts = await pageTexts(new Uint8Array(await paperRes.arrayBuffer()));
+    const keyTexts = await pageTexts(new Uint8Array(await keyRes.arrayBuffer()));
+    assert.equal(paperTexts.length, 1);
+    assert.doesNotMatch(paperTexts.join(" "), /Answer Key|Correct Answer/);
+    assert.equal(keyTexts.length, 1);
+    assert.match(keyTexts[0], /Answer Key/);
+    assert.match(keyTexts[0], /4 - B/);
+    assert.doesNotMatch(keyTexts[0], /\(1\)|A body moves/);
   });
 });
 

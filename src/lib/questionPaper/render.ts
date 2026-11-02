@@ -1,4 +1,5 @@
 import type { Browser } from "puppeteer-core";
+import { checkPdf, FIT_SCRIPT, PRINT_VIEWPORT_WIDTH_PX, type FitResult, type LayoutReport } from "./layoutFit";
 
 // HTML to PDF with headless Chrome: @sparticuz/chromium's build on Linux
 // (Vercel), a local Chrome elsewhere (CHROME_PATH, else the usual install path).
@@ -80,7 +81,13 @@ async function dropBrowser() {
   if (!closed) instance.process()?.kill("SIGKILL");
 }
 
-async function printOnce(html: string, timeoutMs: number): Promise<Uint8Array> {
+/** The paper printed, and what the measuring pass found (null when it didn't run). */
+interface Printed {
+  pdf: Uint8Array;
+  fit: FitResult | null;
+}
+
+async function printOnce(html: string, timeoutMs: number, fit: boolean): Promise<Printed> {
   const page = await (await getBrowser()).newPage();
   try {
     await page.setJavaScriptEnabled(false);
@@ -93,7 +100,15 @@ async function printOnce(html: string, timeoutMs: number): Promise<Uint8Array> {
       }
     });
     await page.goto(PAGE_URL, { waitUntil: "load", timeout: Math.min(60000, timeoutMs) });
-    return await page.pdf({
+    let fitted: FitResult | null = null;
+    if (fit) {
+      // Measure at the width the paper prints at. The page runs no scripts of
+      // its own (JavaScript is off); this is Chrome's own evaluation.
+      await page.emulateMediaType("print");
+      await page.setViewport({ width: PRINT_VIEWPORT_WIDTH_PX, height: 1200 });
+      fitted = (await page.evaluate(FIT_SCRIPT)) as FitResult;
+    }
+    const pdf = await page.pdf({
       preferCSSPageSize: true,
       printBackground: true,
       // Tagging adds an accessibility tree with a node for every bit of maths:
@@ -102,6 +117,7 @@ async function printOnce(html: string, timeoutMs: number): Promise<Uint8Array> {
       outline: false,
       timeout: timeoutMs,
     });
+    return { pdf, fit: fitted };
   } finally {
     await page.close().catch(() => {});
   }
@@ -112,10 +128,10 @@ async function printOnce(html: string, timeoutMs: number): Promise<Uint8Array> {
  * every step (opening a page on a stuck Chrome has none), so on the deadline
  * Chrome itself is closed or killed: whatever it was doing stops.
  */
-async function printBy(html: string, deadline: number): Promise<Uint8Array> {
+async function printBy(html: string, deadline: number, fit: boolean): Promise<Printed> {
   const left = deadline - Date.now();
   if (left <= 0) throw new RenderTimeoutError("The paper waited too long to be printed");
-  const work = printOnce(html, left);
+  const work = printOnce(html, left, fit);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new RenderTimeoutError(`Printing took over ${left} ms`)), left);
@@ -138,18 +154,13 @@ async function printBy(html: string, deadline: number): Promise<Uint8Array> {
 let queue: Promise<unknown> = Promise.resolve();
 let pending = 0;
 
-/**
- * Prints the page to an A4 PDF (size and margins come from its @page rule).
- * Rejects with RenderBusyError when too many papers are waiting, and with
- * RenderTimeoutError when it can't finish within timeoutMs of being asked.
- */
-export function renderPdf(html: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Uint8Array> {
+function enqueue(html: string, timeoutMs: number, fit: boolean): Promise<Printed> {
   if (pending >= MAX_PENDING) return Promise.reject(new RenderBusyError("Too many papers are waiting to be printed"));
   pending++;
   const deadline = Date.now() + timeoutMs;
   const run = queue.then(async () => {
     try {
-      return await printBy(html, deadline);
+      return await printBy(html, deadline, fit);
     } catch (error) {
       // A crashed or closed Chrome takes the page with it: start a fresh one
       // and try once more. Anything else is a real failure.
@@ -158,7 +169,7 @@ export function renderPdf(html: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
       if (current?.connected) throw error;
       console.warn("[question-paper-pdf] Chrome stopped, starting it again:", error);
       await dropBrowser();
-      return printBy(html, deadline);
+      return printBy(html, deadline, fit);
     }
   });
   const settled = run.catch(() => {}).finally(() => {
@@ -166,4 +177,40 @@ export function renderPdf(html: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise
   });
   queue = settled;
   return run;
+}
+
+/**
+ * Prints the page to an A4 PDF (size and margins come from its @page rule).
+ * Rejects with RenderBusyError when too many papers are waiting, and with
+ * RenderTimeoutError when it can't finish within timeoutMs of being asked.
+ */
+export async function renderPdf(html: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Uint8Array> {
+  return (await enqueue(html, timeoutMs, false)).pdf;
+}
+
+/**
+ * Prints a question paper like renderPdf, after Chrome has measured it at its
+ * printed width and fixed what doesn't fit (layoutFit.ts), then checks the PDF
+ * itself. The report lists what is still wrong; `questions` is how many
+ * numbered questions the PDF must show.
+ */
+export async function renderPaper(
+  html: string,
+  questions: number,
+  timeoutMs = DEFAULT_TIMEOUT_MS
+): Promise<{ pdf: Uint8Array; layout: LayoutReport }> {
+  const { pdf, fit } = await enqueue(html, timeoutMs, true);
+  const issues = [...(fit?.issues ?? [])];
+  let pages = 0;
+  try {
+    const checked = await checkPdf(pdf, { questions, figures: fit?.stats.rasterFigures ?? 0 });
+    issues.push(...checked.issues);
+    pages = checked.pages;
+  } catch (error) {
+    // The paper is printed; only the final check couldn't run.
+    console.warn("[question-paper-pdf] layout check failed:", error);
+    issues.push({ severity: "warning", kind: "check-failed", where: "Paper", detail: "The finished PDF could not be checked." });
+  }
+  const stats = fit?.stats ?? { equations: 0, equationsScaled: 0, optionsStacked: 0, figures: 0, rasterFigures: 0, keysResized: 0 };
+  return { pdf, layout: { issues, stats: { ...stats, pages } } };
 }
