@@ -47,6 +47,7 @@ function streamOf(bytes: Uint8Array): ReadableStream<Uint8Array> {
  * before the body is read.
  */
 export const POST = route(async (req) => {
+  const received = Date.now();
   const { tuitionId } = await requireUser(req, "teacher", "tuition");
 
   const raw = await readBody(req, MAX_BODY_BYTES, "This paper is too large to send. Pick fewer questions.");
@@ -59,7 +60,7 @@ export const POST = route(async (req) => {
   // The name at the top is the signed-in account's own tuition, so one
   // institute's paper can't be printed under another's name.
   const tuition = await Tuition.findById(tuitionId).select("name phone").lean<{ name: string; phone?: string }>();
-  if (paper.format === "smart") return smartPdf(paper, tuition?.name ?? "", req.headers.get("host") ?? "");
+  if (paper.format === "smart") return smartPdf(paper, tuition?.name ?? "", req.headers.get("host") ?? "", received);
   paper.institute = [tuition?.name, tuition?.phone].filter(Boolean).join(" - ");
   const figureUrls = figureUrlsOf(paper);
   if (figureUrls.length > MAX_FIGURES) {
@@ -123,56 +124,83 @@ export const POST = route(async (req) => {
   });
 });
 
+/** The stages' times as a Server-Timing header, so a slow request shows where its time went. */
+const serverTiming = (stages: Record<string, number>) =>
+  Object.entries(stages)
+    .map(([name, ms]) => `${name};dur=${Math.round(ms)}`)
+    .join(", ");
+
 /**
  * A Smart PDF: one question per 16:9 slide, with the institute's name (no
- * phone) at the top. A question that doesn't fit its slide, even with smaller
- * text, is reported and no PDF is made: nothing is ever printed cut off.
+ * phone) at the top. Chrome measures each question in the page it prints and
+ * sizes its slide (lib/smartSlides/html.ts). A question that can't be laid out
+ * legibly is reported straight after measuring, without printing anything:
+ * nothing is ever printed cut off.
  */
-async function smartPdf(paper: QuestionPaper, instituteName: string, host: string): Promise<Response> {
+async function smartPdf(paper: QuestionPaper, instituteName: string, host: string, received: number): Promise<Response> {
   paper.institute = instituteName;
+  const settings = paper.slides!;
   const figureUrls = figureUrlsOf(paper);
   if (figureUrls.length > MAX_FIGURES) {
     throw badRequest(`These questions have ${figureUrls.length} figures; a PDF can have at most ${MAX_FIGURES}. Pick fewer questions.`);
   }
   const started = Date.now();
+  let figuresMs = 0;
   let printed: Awaited<ReturnType<typeof renderSlides>>;
   try {
     const figures = await embedFigures(figureUrls, host, FIGURES_BUDGET_MS);
-    printed = await renderSlides(smartSlidesHtml(paper, figures), RENDER_TIMEOUT_MS);
+    figuresMs = Date.now() - started;
+    printed = await renderSlides(smartSlidesHtml(paper, figures), settings, RENDER_TIMEOUT_MS);
   } catch (error) {
+    console.warn(`[question-paper-pdf] smart: failed after ${Date.now() - received} ms (before figures ${started - received} ms, figures ${figuresMs} ms)`);
     if (error instanceof RenderBusyError) throw new HttpError(503, "The server is busy making other PDFs. Try again in a minute.");
     if (error instanceof RenderTimeoutError) throw new HttpError(504, "Making the PDF took too long. Try again, or pick fewer questions.");
     console.error("[question-paper-pdf] smart PDF failed:", error);
     throw new HttpError(500, "Could not make the PDF. Try again.");
   }
-  const { pdf, fit } = printed;
+  const { pdf, fit, ms } = printed;
   const errors = fit.issues.filter((issue) => issue.severity === "error");
+  const timing = serverTiming({
+    request: started - received,
+    figures: figuresMs,
+    queue: ms.queue,
+    chrome: ms.page,
+    load: ms.load,
+    measure: ms.measure,
+    pdf: ms.pdf,
+    total: Date.now() - received,
+  });
+  const s = fit.stats;
   console.log(
-    `[question-paper-pdf] smart: ${paper.questions.length} questions, ${fit.stats.slides} slides, ${fit.stats.shrunk} shrunk, ` +
-      `${errors.length} errors, ${Math.round(pdf.length / 1024)} KB in ${Date.now() - started} ms`
+    `[question-paper-pdf] smart: ${paper.questions.length} questions, ${s.slides} slides ` +
+      `(${s.short} short, ${s.medium} medium, ${s.full} full + ${s.blank} writing, ${s.continued} continued, ${s.shrunk} smaller text), ` +
+      `${errors.length} errors, ${pdf ? Math.round(pdf.length / 1024) : 0} KB; ${timing}`
   );
-  if (errors.length) {
-    const numbers = errors.map((issue) => issue.where.replace(/^Question /, "")).slice(0, 8);
+  for (const issue of fit.issues) console.warn(`[question-paper-pdf] smart ${issue.severity}: ${issue.where}: ${issue.kind}: ${issue.detail}`);
+  if (errors.length || !pdf) {
+    const numbers = [...new Set(errors.map((issue) => issue.where.replace(/^Question /, "")))].slice(0, 8);
+    const which = numbers.length && /^\d+$/.test(numbers[0]) ? `Question ${numbers.join(", ")}` : "";
     return Response.json(
       {
-        error:
-          `Question ${numbers.join(", ")} ${numbers.length === 1 ? "is" : "are"} too long for a slide, even with smaller text. ` +
-          "Make the question area taller, pick a smaller font, or leave that question out.",
+        error: which
+          ? `${which} can't be shown legibly on slides: ${errors[0].detail} Edit ${numbers.length === 1 ? "it" : "them"}, or leave ${numbers.length === 1 ? "it" : "them"} out.`
+          : "The slides could not be laid out. Try again.",
         issues: errors.slice(0, 30),
       },
-      { status: 422, headers: { "Cache-Control": "no-store" } }
+      { status: 422, headers: { "Cache-Control": "no-store", "Server-Timing": timing } }
     );
   }
-  const filename = `${paper.title.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 80)}.pdf`;
+  const filename = `${paper.title.replace(/[\/:*?"<>|]+/g, "-").slice(0, 80)}.pdf`;
   return new Response(streamOf(pdf), {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
       "Cache-Control": "no-store",
-      "X-Page-Count": String(fit.stats.slides),
+      "X-Page-Count": String(s.slides),
       "X-Render-Ms": String(Date.now() - started),
       "X-Layout-Errors": "0",
       "X-Layout-Warnings": String(fit.issues.length),
+      "Server-Timing": timing,
     },
   });
 }

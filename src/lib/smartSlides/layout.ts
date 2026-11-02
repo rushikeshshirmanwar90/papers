@@ -1,10 +1,15 @@
 // Smart PDF layout rules: one question per 16:9 slide, the question and its
 // options at the top and the rest left blank for the teacher to write on.
 //
-// The same file is papers/src/lib/smartSlides/layout.ts (the server prints
-// slides by it) and pcmb-paper/src/shared/smart-slide-layout.ts (the app's
-// layout preview follows it). Change both together; the app's test checks
-// they match.
+// The same file is papers/src/lib/smartSlides/layout.ts (the server's slide
+// geometry and settings) and pcmb-paper/src/shared/smart-slide-layout.ts (the
+// app's settings and sample preview). Change both together; the app's test
+// checks they match.
+//
+// The server never sizes a slide from the estimates below: it measures each
+// question in Chrome and grows its area, or gives it a whole slide, as needed
+// (papers/src/lib/smartSlides/html.ts). The estimates only draw the app's
+// sample slide.
 // Plain TypeScript with no imports, so both projects can run it as is.
 
 export type SlideTheme = "dark" | "green" | "white";
@@ -15,7 +20,7 @@ export type McqLayout = Exclude<McqLayoutSetting, "auto">;
 /** What a teacher can change; remembered per teacher on their phone. */
 export interface SmartSlideSettings {
   theme: SlideTheme;
-  /** How much of the slide's height the question may use, in %; the rest is for writing. */
+  /** How much of the slide's height the question area takes, in %, the rest left for writing. A preference: a question that needs more gets more. */
   questionAreaPct: number;
   fontSize: SlideFontSize;
   mcqLayout: McqLayoutSetting;
@@ -110,7 +115,7 @@ export const SLIDE = {
 
 /** Body text size, in px on the 960-wide slide (≈ the same size in pt on a 13.3 in slide). */
 export const FONT_PX: Record<SlideFontSize, number> = { small: 15, medium: 18, large: 22 };
-/** The smallest the print pass may shrink text to so a question still fits. */
+/** The server never sets a question's text smaller than this. */
 export const MIN_FONT_PX = 13;
 
 export interface SlideGeometry {
@@ -138,7 +143,7 @@ export function slideGeometry(settings: SmartSlideSettings): SlideGeometry {
   };
 }
 
-// ─── Estimating text ───────────────────────────────────────────────────────
+// ─── Questions, and the app's sample preview ──────────────────────────────
 
 /** What the slide needs of a question. */
 export interface SlideQuestion {
@@ -155,33 +160,14 @@ export interface SlideQuestion {
 export const OPTION_KEYS = ["A", "B", "C", "D"] as const;
 export type OptionKey = (typeof OPTION_KEYS)[number];
 
-/** Average glyph width as a share of the font size; on the generous side so estimates err towards more room. */
+/** Average glyph width as a share of the font size (the sample preview's estimate). */
 const CHAR_EM = 0.53;
-/** Maths that stands taller than a line of text. */
-const TALL_MATH = /\\(?:d?frac|tfrac|sum|int|oint|prod|sqrt|lim|binom|over|begin|matrix|underset|overset|stackrel)\b|\^\{[^}]{3,}\}/;
-
 /** Roughly how many characters wide a text prints: LaTeX markup counts for little. */
 export function visibleLength(text: string): number {
   return text
     .replace(/\\(?:left|right|displaystyle|mathrm|mathbf|text|operatorname)\b/g, "")
     .replace(/\\[a-zA-Z]+/g, "x")
     .replace(/[\\$(){}[\]^_]/g, "").length;
-}
-
-/** Estimated height of a text set `widthPx` wide. */
-export function textHeight(text: string, fontPx: number, widthPx: number): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  const perLine = Math.max(8, Math.floor(widthPx / (fontPx * CHAR_EM)));
-  const lineHeight = fontPx * SLIDE.lineHeight;
-  let height = 0;
-  for (const paragraph of trimmed.split(/\n+/)) {
-    const lines = Math.max(1, Math.ceil(visibleLength(paragraph) / perLine));
-    const tall = TALL_MATH.test(paragraph) ? 1.45 : 1;
-    const display = /\\\[|\$\$/.test(paragraph) ? lineHeight * 0.6 : 0;
-    height += lines * lineHeight * tall + display;
-  }
-  return height;
 }
 
 export const optionText = (q: SlideQuestion, key: OptionKey) => q[`option${key}` as const] ?? "";
@@ -192,9 +178,7 @@ export function optionsOf(q: SlideQuestion): OptionKey[] {
   return OPTION_KEYS.filter((key) => optionText(q, key).trim() || q.optionDiagramUrls[key].length);
 }
 
-const COLUMNS: Record<McqLayout, number> = { horizontal: 4, grid: 2, vertical: 1 };
-
-/** How the options sit: "auto" puts them in one row, a 2 × 2 grid or one per line, whichever keeps each on one line. */
+/** The sample preview's options layout: "auto" puts them in one row, a 2 × 2 grid or one per line, whichever keeps each on one line. */
 export function chooseMcqLayout(q: SlideQuestion, setting: McqLayoutSetting, fontPx: number, widthPx: number): McqLayout | null {
   const keys = optionsOf(q);
   if (!keys.length) return null;
@@ -206,166 +190,4 @@ export function chooseMcqLayout(q: SlideQuestion, setting: McqLayoutSetting, fon
   if (!hasFigure && widest <= cell(4)) return "horizontal";
   if (widest <= cell(2)) return "grid";
   return "vertical";
-}
-
-/** Estimated height of the options block (or of some of its options). */
-export function optionsHeight(q: SlideQuestion, layout: McqLayout, fontPx: number, widthPx: number, keys: OptionKey[] = optionsOf(q)): number {
-  if (!keys.length) return 0;
-  const columns = COLUMNS[layout];
-  const cellWidth = (widthPx - (columns - 1) * SLIDE.gap * 2) / columns - SLIDE.markEm * fontPx;
-  const heights = keys.map((key) => {
-    const text = textHeight(optionText(q, key), fontPx, cellWidth) || 0;
-    const figure = q.optionDiagramUrls[key].length ? SLIDE.optionFigureHeight + 4 : 0;
-    return Math.max(fontPx * SLIDE.lineHeight, text + figure);
-  });
-  let total = 0;
-  for (let row = 0; row < keys.length; row += columns) total += Math.max(...heights.slice(row, row + columns));
-  return total + (Math.ceil(keys.length / columns) - 1) * SLIDE.gap;
-}
-
-// ─── Splitting long questions ──────────────────────────────────────────────
-
-/**
- * The stem cut into pieces that may go on different slides: paragraphs, then
- * sentences, then runs of words. Never inside maths ($…$, \(…\), \[…\]).
- */
-export function stemPieces(text: string): string[] {
-  const pieces: string[] = [];
-  for (const paragraph of text.trim().split(/\n+/)) {
-    if (paragraph.trim()) pieces.push(...breakOutsideMath(paragraph, /[.?!;:]\s+/g));
-  }
-  return pieces;
-}
-
-/** Ranges of `text` that are maths. */
-function mathRanges(text: string): [number, number][] {
-  const ranges: [number, number][] = [];
-  const re = /\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\\\([\s\S]*?\\\)|\$[^$\n]*?\$/g;
-  for (const m of text.matchAll(re)) ranges.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
-  return ranges;
-}
-
-function breakOutsideMath(text: string, boundary: RegExp): string[] {
-  const maths = mathRanges(text);
-  const inMath = (at: number) => maths.some(([start, end]) => at > start && at < end);
-  const out: string[] = [];
-  let from = 0;
-  for (const m of text.matchAll(boundary)) {
-    const at = (m.index ?? 0) + m[0].length;
-    if (inMath(m.index ?? 0)) continue;
-    out.push(text.slice(from, at).trim());
-    from = at;
-  }
-  out.push(text.slice(from).trim());
-  return out.filter(Boolean);
-}
-
-/** A piece too tall for a whole slide, as runs of words that each fit. */
-function byWords(piece: string, fontPx: number, widthPx: number, maxHeight: number): string[] {
-  const words = breakOutsideMath(piece, /\s+/g);
-  const out: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (current && textHeight(next, fontPx, widthPx) > maxHeight) {
-      out.push(current);
-      current = word;
-    } else current = next;
-  }
-  if (current) out.push(current);
-  return out;
-}
-
-/** One slide of a question. */
-export interface SlidePart {
-  /** The part of the stem on this slide. */
-  stem: string;
-  /** The question's figures sit beside the text of its first slide. */
-  figures: boolean;
-  /** Whether this slide shows options: all of them on the question's last slide, or a row or more of them when they can't all fit together. */
-  options: boolean;
-  /** The options on this slide, in order. */
-  optionKeys: OptionKey[];
-  /** Carries on from the slide before. */
-  continued: boolean;
-}
-
-export interface QuestionSlidePlan {
-  parts: SlidePart[];
-  mcqLayout: McqLayout | null;
-  fontPx: number;
-  /** The text column's width: narrower when a figure sits beside it. */
-  textWidth: number;
-  /** Width of the figure column, or 0. */
-  figureWidth: number;
-  /** The estimate says even one piece can't fit at this size; printing will shrink it, or report it. */
-  tight: boolean;
-}
-
-/**
- * A question's slides. Usually one; a question too long for its area runs on
- * to continuation slides, its options always on the last one.
- */
-export function planQuestionSlides(q: SlideQuestion, settings: SmartSlideSettings): QuestionSlidePlan {
-  const g = slideGeometry(settings);
-  const hasFigure = q.diagramUrls.length > 0;
-  const figureWidth = hasFigure ? Math.round(g.contentWidth * SLIDE.figureShare) : 0;
-  const textWidth = hasFigure ? g.contentWidth - figureWidth - SLIDE.figureGap : g.contentWidth;
-  const fontPx = g.fontPx;
-  const room = g.contentHeight;
-  const mcqLayout = chooseMcqLayout(q, settings.mcqLayout, fontPx, textWidth);
-  let tight = false;
-
-  const pieces = stemPieces(q.questionText).flatMap((piece) =>
-    textHeight(piece, fontPx, textWidth) > room ? byWords(piece, fontPx, textWidth, room) : [piece]
-  );
-
-  const parts: SlidePart[] = [];
-  const push = (stem: string, optionKeys: OptionKey[]) =>
-    parts.push({ stem, figures: parts.length === 0, options: optionKeys.length > 0, optionKeys, continued: parts.length > 0 });
-  let current: string[] = [];
-  const height = (list: string[]) => textHeight(list.join(" "), fontPx, textWidth);
-  for (const piece of pieces) {
-    const next = [...current, piece];
-    if (current.length && height(next) > room) {
-      push(current.join(" "), []);
-      current = [piece];
-    } else current = next;
-    if (height(current) > room) tight = true;
-  }
-
-  // The options stay together when they fit; otherwise they are cut between
-  // rows, a slide's worth at a time, each option kept whole.
-  const keys = optionsOf(q);
-  const groups: OptionKey[][] = [];
-  if (mcqLayout && keys.length) {
-    const columns = COLUMNS[mcqLayout];
-    const rowsOf = (list: OptionKey[]) => optionsHeight(q, mcqLayout, fontPx, textWidth, list);
-    let group: OptionKey[] = [];
-    for (let row = 0; row < keys.length; row += columns) {
-      const rowKeys = keys.slice(row, row + columns);
-      if (rowsOf(rowKeys) > room) tight = true;
-      if (group.length && rowsOf([...group, ...rowKeys]) > room) {
-        groups.push(group);
-        group = rowKeys;
-      } else group = [...group, ...rowKeys];
-    }
-    groups.push(group);
-  }
-
-  // The first options join the last piece of the stem if they fit with it; the rest follow on slides of their own.
-  const lastStem = current.join(" ");
-  if (!groups.length) push(lastStem, []);
-  else {
-    const first = groups[0];
-    const fitsWithStem =
-      !lastStem || height(current) + SLIDE.gap + optionsHeight(q, mcqLayout!, fontPx, textWidth, first) <= room;
-    if (fitsWithStem) push(lastStem, first);
-    else {
-      push(lastStem, []);
-      push("", first);
-    }
-    for (const group of groups.slice(1)) push("", group);
-  }
-  return { parts, mcqLayout, fontPx, textWidth, figureWidth, tight };
 }

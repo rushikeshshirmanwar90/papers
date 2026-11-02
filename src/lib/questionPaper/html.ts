@@ -100,6 +100,55 @@ export function richText(text: string | undefined): string {
     .join("");
 }
 
+/** One word (or formula) of a text, as richTokens returns it. */
+export interface RichToken {
+  html: string;
+  /** What separates it from the next token: "" (last), " ", or one or more line breaks. */
+  after: "" | " " | `\n${string}`;
+  /** It ends a sentence or clause, a good place to continue on another slide. */
+  sentenceEnd: boolean;
+}
+
+/**
+ * The same text as richText, as words and whole formulas, so a slide can be
+ * cut between any two of them. Joined back (a space, or <br> per line break,
+ * between them) it prints just as richText does.
+ */
+export function richTokens(text: string | undefined): RichToken[] {
+  const tokens: { html: string; raw: string; after: string }[] = [];
+  const glue = (html: string, raw: string) => {
+    const last = tokens[tokens.length - 1];
+    if (last && last.after === "") {
+      last.html += html;
+      last.raw += raw;
+    } else tokens.push({ html, raw, after: "" });
+  };
+  for (const piece of splitLatex(text ?? "")) {
+    if (piece.kind === "math") {
+      let html: string;
+      try {
+        html = mathHtml(piece.value, piece.display);
+      } catch {
+        html = escapeHtml(piece.value);
+      }
+      glue(html, "$");
+      continue;
+    }
+    for (const part of piece.value.split(/(\s+)/)) {
+      if (!part) continue;
+      if (/^\s+$/.test(part)) {
+        const last = tokens[tokens.length - 1];
+        if (last) last.after = part.includes("\n") ? "\n".repeat((part.match(/\n/g) ?? []).length) : " ";
+      } else glue(escapeHtml(part), part);
+    }
+  }
+  return tokens.map((token, i) => ({
+    html: token.html,
+    after: i === tokens.length - 1 ? "" : ((token.after || " ") as RichToken["after"]),
+    sentenceEnd: /[.?!;:]["')\]]*$/.test(token.raw),
+  }));
+}
+
 function figureTags(urls: string[], embedded: EmbeddedFigures): string {
   return urls
     .map((url) => {
