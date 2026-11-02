@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { NextRequest } from "next/server";
-import { HttpError } from "@/lib/http";
+import { HttpError, isObjectId } from "@/lib/http";
 import { programOf, type Role } from "@/lib/school";
 import Tuition from "@/models/Tuition";
 import User, { type UserDoc } from "@/models/User";
@@ -100,12 +100,20 @@ export async function requireAccount(req: NextRequest): Promise<AccountSession> 
     throw new HttpError(401, "Your login has expired. Log in again.");
   }
 
-  const user = payload.sub ? await User.findById(payload.sub) : null;
+  // The token names the tuition it was issued for: check it alongside loading the
+  // user (one database round trip instead of two). It only counts if it is still
+  // the user's tuition; otherwise the user's own tuition is checked as before.
+  const tokenTuition = typeof payload.tid === "string" && isObjectId(payload.tid) ? payload.tid : null;
+  const [user, tokenTuitionActive] = await Promise.all([
+    payload.sub ? User.findById(payload.sub) : null,
+    tokenTuition ? Tuition.exists({ _id: tokenTuition, active: true }) : null,
+  ]);
   if (!user || !user.active || user.tokenVersion !== payload.v) {
     throw new HttpError(401, "Your login has expired. Log in again.");
   }
-  if (user.tuitionId && !(await Tuition.exists({ _id: user.tuitionId, active: true }))) {
-    throw new HttpError(401, "This tuition's account is turned off.");
+  if (user.tuitionId) {
+    const active = String(user.tuitionId) === tokenTuition ? !!tokenTuitionActive : !!(await Tuition.exists({ _id: user.tuitionId, active: true }));
+    if (!active) throw new HttpError(401, "This tuition's account is turned off.");
   }
   return { user, userId: String(user._id), role: user.role ?? null, tuitionId: user.tuitionId ? String(user.tuitionId) : null };
 }
