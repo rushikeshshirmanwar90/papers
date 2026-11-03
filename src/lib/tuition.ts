@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { badRequest, isObjectId, listOf, notFound, oneOf, text } from "@/lib/http";
+import { HttpError, badRequest, isObjectId, listOf, notFound, oneOf, text } from "@/lib/http";
 import {
   academicYearOf,
   fitProblem,
@@ -21,6 +21,7 @@ import {
 } from "@/lib/school";
 import type { TimetableSummary } from "@/lib/timetable";
 import Batch, { type BatchDoc, type BatchSlot } from "@/models/Batch";
+import TimetableEntry from "@/models/TimetableEntry";
 import User, { type UserDoc } from "@/models/User";
 
 // The tuition's own data — batches, teachers and students — checked and
@@ -84,9 +85,61 @@ export async function readBatchTeachers(value: unknown, tuitionId: string, subje
   const ids = [...new Set(entries.map((e) => String(e.teacherId)))];
   const found = await User.countDocuments({ _id: { $in: ids }, tuitionId, role: "teacher" });
   if (found !== ids.length) throw badRequest("One of the teachers isn't part of this tuition.");
-  // One teacher per subject.
+  // A teacher is assigned to a subject once; a subject can have several teachers.
   const seen = new Set<string>();
-  return entries.filter((e) => (seen.has(e.subject) ? false : (seen.add(e.subject), true)));
+  return entries.filter((e) => {
+    const key = `${e.teacherId}:${e.subject}`;
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
+}
+
+/** A batch name compared the way people read it: trimmed, any case. */
+export const nameKeyOf = (name: string) => name.trim().toLowerCase();
+
+export const DUPLICATE_BATCH_NAME = "A batch with this name already exists in your tuition.";
+
+/** Refuses a batch name another batch of this tuition already has (trimmed, any case). */
+export async function mustHaveUniqueName(tuitionId: string, name: string, exceptId?: unknown) {
+  const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const clash = await Batch.exists({
+    tuitionId,
+    name: new RegExp(`^\\s*${escaped}\\s*$`, "i"),
+    ...(exceptId ? { _id: { $ne: exceptId } } : {}),
+  });
+  if (clash) throw new HttpError(409, DUPLICATE_BATCH_NAME);
+}
+
+/** Turns a unique-index clash on the batch name (two requests at once) into the same message. */
+export function asDuplicateName(error: unknown): never {
+  const e = error as { code?: number; keyPattern?: Record<string, unknown> };
+  if (e?.code === 11000 && e.keyPattern && "nameKey" in e.keyPattern) throw new HttpError(409, DUPLICATE_BATCH_NAME);
+  throw error;
+}
+
+/**
+ * Sets one teacher's subjects in a batch (all of them replace what the teacher
+ * had there; none removes the teacher from the batch). A subject that still has
+ * the teacher's classes in the timetable can't be dropped.
+ */
+export async function assignTeacher(batch: BatchDoc, teacherId: string, subjects: SchoolSubject[]) {
+  const teacher = isObjectId(teacherId) ? await User.findOne({ _id: teacherId, tuitionId: batch.tuitionId, role: "teacher" }).select("name") : null;
+  if (!teacher) throw badRequest("Pick one of your teachers.");
+  const unique = [...new Set(subjects)];
+  const outside = unique.find((s) => !batch.subjects.includes(s));
+  if (outside) throw badRequest(`${outside} isn't one of this batch's subjects.`);
+  const had = batch.teachers.filter((t) => String(t.teacherId) === teacherId).map((t) => t.subject);
+  const dropped = had.filter((s) => !unique.includes(s));
+  if (dropped.length) {
+    const inUse = await TimetableEntry.countDocuments({ batchId: batch._id, teacherId, subject: { $in: dropped } });
+    if (inUse) {
+      throw new HttpError(
+        409,
+        `${teacher.name} has ${inUse} scheduled ${inUse === 1 ? "class" : "classes"} in ${dropped.join(", ")} for this batch. Change or remove ${inUse === 1 ? "it" : "them"} in the schedule first.`
+      );
+    }
+  }
+  batch.teachers = [...batch.teachers.filter((t) => String(t.teacherId) !== teacherId), ...unique.map((subject) => ({ teacherId: teacher._id, subject }))] as never;
+  await batch.save();
 }
 
 /**

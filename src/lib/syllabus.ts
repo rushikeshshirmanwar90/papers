@@ -25,6 +25,8 @@ export const BANK_SUBJECTS: Record<SchoolSubject, string[]> = {
 
 const CACHE_MS = 10 * 60 * 1000;
 const cache = new Map<string, { at: number; chapters: SyllabusChapter[] }>();
+/** Lookups under way, so requests that arrive together share one question bank scan. */
+const pending = new Map<string, Promise<SyllabusChapter[]>>();
 
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
 
@@ -34,7 +36,17 @@ export async function syllabusFor(subject: SchoolSubject, standards: readonly Sc
   const key = `${subject}|${wanted.join(",")}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.chapters;
+  const running = pending.get(key);
+  if (running) return running;
+  const lookup = loadSyllabus(subject, wanted).then((list) => {
+    cache.set(key, { at: Date.now(), chapters: list });
+    return list;
+  });
+  pending.set(key, lookup);
+  return lookup.finally(() => pending.delete(key));
+}
 
+async function loadSyllabus(subject: SchoolSubject, wanted: SchoolStandard[]): Promise<SyllabusChapter[]> {
   const groups = await Question.aggregate<{ _id: { standard: SchoolStandard; chapter: string; topic: string }; n: number }>([
     {
       $match: {
@@ -61,7 +73,6 @@ export async function syllabusFor(subject: SchoolSubject, standards: readonly Sc
     .map((c) => ({ ...c, topics: c.topics.length ? c.topics.sort(byName) : [""] }))
     .sort((a, b) => a.standard.localeCompare(b.standard) || byName(a.chapter, b.chapter));
 
-  cache.set(key, { at: Date.now(), chapters: list });
   return list;
 }
 
@@ -84,8 +95,10 @@ export async function coverageFor(
   const result = new Map<string, Record<string, { covered: number; total: number; percent: number }>>();
   for (const batch of batches) {
     const perSubject: Record<string, { covered: number; total: number; percent: number }> = {};
-    for (const subject of batch.subjects) {
-      const syllabus = await syllabusFor(subject, standardsOf(batch.standard));
+    // The subjects' syllabuses load side by side, not one after another.
+    const syllabuses = await Promise.all(batch.subjects.map((subject) => syllabusFor(subject, standardsOf(batch.standard))));
+    for (const [i, subject] of batch.subjects.entries()) {
+      const syllabus = syllabuses[i];
       const units = new Set(syllabus.flatMap((c) => c.topics.map((t) => unitKey(c.standard, c.chapter, t))));
       const covered = new Set(
         progress

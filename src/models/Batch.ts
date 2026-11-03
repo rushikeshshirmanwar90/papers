@@ -20,6 +20,8 @@ export interface BatchTeacher {
 export interface BatchDoc extends Document {
   tuitionId: Types.ObjectId;
   name: string;
+  /** The name trimmed and lower-cased, for the per-tuition unique index. Older batches have none. */
+  nameKey?: string;
   /** What the batch prepares for. Older batches have only `track`: see programOf. */
   program?: Program;
   /** The track the program stands for, kept for older app versions. */
@@ -42,6 +44,7 @@ const BatchSchema = new Schema<BatchDoc>(
   {
     tuitionId: { type: Schema.Types.ObjectId, ref: "Tuition", required: true, index: true },
     name: { type: String, required: true, trim: true },
+    nameKey: { type: String },
     program: { type: String, enum: PROGRAMS },
     track: { type: String, enum: TRACKS, required: true },
     standard: { type: String, enum: STANDARDS },
@@ -75,5 +78,13 @@ const BatchSchema = new Schema<BatchDoc>(
 );
 
 BatchSchema.index({ "teachers.teacherId": 1 });
+
+// Batch names are unique within a tuition, ignoring spaces at the ends and case.
+// The key is set only when a batch is made or renamed, and the index skips batches
+// without one, so older batches (which may share a name) are never touched or blocked.
+BatchSchema.pre("save", function () {
+  if (this.isNew || this.isModified("name")) this.nameKey = this.name.trim().toLowerCase();
+});
+BatchSchema.index({ tuitionId: 1, nameKey: 1 }, { unique: true, partialFilterExpression: { nameKey: { $type: "string" } } });
 
 export default models.Batch || model<BatchDoc>("Batch", BatchSchema);

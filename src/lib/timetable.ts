@@ -70,7 +70,8 @@ export async function readEntries(session: Session, body: Record<string, unknown
         ? await User.findOne({ _id: body.teacherId, tuitionId: session.tuitionId, role: "teacher" }).select("name subjects").lean<{ _id: Types.ObjectId; name: string; subjects: string[] }>()
         : null;
       if (!teacher) throw badRequest("Pick one of your teachers.");
-      if (!teacher.subjects.includes(subject)) throw badRequest(`${teacher.name} doesn't teach ${subject}. Pick a ${subject} teacher, or none for now.`);
+      const assigned = batch.teachers.some((t) => String(t.teacherId) === String(teacher._id) && t.subject === subject);
+      if (!assigned && !teacher.subjects.includes(subject)) throw badRequest(`${teacher.name} doesn't teach ${subject}. Pick a ${subject} teacher, or none for now.`);
       teacherId = teacher._id;
     }
   } else if (existing && subject === existing.subject && String(batch._id) === String(existing.batchId)) teacherId = existing.teacherId ?? null;
@@ -158,14 +159,21 @@ export async function timetableSummaries(tuitionId: string | Types.ObjectId, bat
 
 export const EMPTY_SUMMARY: TimetableSummary = { classes: 0, weeklyMinutes: 0, days: [], withoutTeacher: 0 };
 
-/** Tells the batch's students their timetable changed (once an hour at most). */
+/**
+ * Tells the batch's students their timetable changed (once an hour at most).
+ * The class is already saved by now, so a slow or failing push must not hold
+ * up or fail the answer: it waits a few seconds at most and never throws.
+ */
 export async function announceTimetableChange(session: Session, batchId: Types.ObjectId, subject: string) {
-  const { membersOf, pushOnce } = await import("@/lib/push");
-  const batch = await Batch.findById(batchId).select("name").lean<{ name: string }>();
-  const hour = new Date().toISOString().slice(0, 13);
-  await pushOnce(`timetable:${batchId}:${hour}`, await membersOf(session.tuitionId, [batchId], ["student"]), {
-    title: "Timetable updated",
-    body: `${subject} classes for ${batch?.name ?? "your batch"} changed. Check this week's timetable.`,
-    data: { tab: "home", kind: "timetable" },
-  });
+  const send = async () => {
+    const { membersOf, pushOnce } = await import("@/lib/push");
+    const batch = await Batch.findById(batchId).select("name").lean<{ name: string }>();
+    const hour = new Date().toISOString().slice(0, 13);
+    await pushOnce(`timetable:${batchId}:${hour}`, await membersOf(session.tuitionId, [batchId], ["student"]), {
+      title: "Timetable updated",
+      body: `${subject} classes for ${batch?.name ?? "your batch"} changed. Check this week's timetable.`,
+      data: { tab: "home", kind: "timetable" },
+    });
+  };
+  await Promise.race([send().catch(() => {}), new Promise<void>((resolve) => setTimeout(resolve, 3000))]);
 }

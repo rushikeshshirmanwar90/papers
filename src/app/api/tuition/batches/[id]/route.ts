@@ -3,7 +3,7 @@ import { badRequest, readJson, route } from "@/lib/http";
 import { coverageFor } from "@/lib/syllabus";
 import { programOf } from "@/lib/school";
 import { EMPTY_SUMMARY, timetableSummaries } from "@/lib/timetable";
-import { batchNames, batchOut, findBatch, mustKeepStudentsFitting, readBatch, studentOut, teacherNames } from "@/lib/tuition";
+import { asDuplicateName, batchNames, batchOut, findBatch, mustHaveUniqueName, mustKeepStudentsFitting, readBatch, studentOut, teacherNames } from "@/lib/tuition";
 import Announcement from "@/models/Announcement";
 import SyllabusProgress from "@/models/SyllabusProgress";
 import TestAttempt from "@/models/TestAttempt";
@@ -15,7 +15,10 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: { id: string } };
 
-/** A batch with its students and syllabus coverage. */
+/**
+ * A batch with its students and syllabus coverage. Coverage scans the question
+ * bank, so screens that don't show it ask with ?coverage=0 and get {}.
+ */
 export const GET = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const batch = await findBatch(tuitionId, params.id);
@@ -23,7 +26,7 @@ export const GET = route<Ctx>(async (req, { params }) => {
     User.find({ tuitionId, role: "student", batchId: batch._id }).sort({ name: 1 }) as Promise<UserDoc[]>,
     teacherNames(tuitionId),
     batchNames(tuitionId),
-    coverageFor([batch]),
+    req.nextUrl.searchParams.get("coverage") === "0" ? Promise.resolve(new Map<string, Record<string, never>>()) : coverageFor([batch]),
     timetableSummaries(tuitionId, [batch._id as never]),
   ]);
   return {
@@ -36,7 +39,9 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const batch = await findBatch(tuitionId, params.id);
   const before = { program: programOf(batch), standard: batch.standard ?? null, subjects: [...batch.subjects] };
-  batch.set(await readBatch(await readJson(req), tuitionId, batch));
+  const fields = await readBatch(await readJson(req), tuitionId, batch);
+  if (typeof fields.name === "string" && fields.name.trim().toLowerCase() !== batch.name.trim().toLowerCase()) await mustHaveUniqueName(tuitionId, fields.name, batch._id);
+  batch.set(fields);
   await mustKeepStudentsFitting(batch, before);
   // A subject with classes in the timetable stays until its classes are removed.
   const dropped = before.subjects.filter((s) => !batch.subjects.includes(s));
@@ -44,7 +49,7 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
     const inUse = await TimetableEntry.distinct("subject", { batchId: batch._id, subject: { $in: dropped } });
     if (inUse.length) throw badRequest(`${inUse.join(", ")} still ${inUse.length === 1 ? "has" : "have"} classes in this batch's timetable. Remove those classes first.`);
   }
-  await batch.save();
+  await batch.save().catch(asDuplicateName);
   const [count, classes] = await Promise.all([
     User.countDocuments({ tuitionId, role: "student", batchId: batch._id }),
     timetableSummaries(tuitionId, [batch._id as never]),

@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { readJson, route } from "@/lib/http";
 import { EMPTY_SUMMARY, timetableSummaries } from "@/lib/timetable";
-import { batchOut, readBatch, studentCounts, teacherNames } from "@/lib/tuition";
+import { asDuplicateName, batchOut, mustHaveUniqueName, readBatch, studentCounts, teacherNames } from "@/lib/tuition";
 import Batch, { type BatchDoc } from "@/models/Batch";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +22,7 @@ export const GET = route(async (req) => {
 export const POST = route(async (req) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const fields = await readBatch(await readJson(req), tuitionId);
-  const batch = (await Batch.create({ ...fields, tuitionId })) as BatchDoc;
+  await mustHaveUniqueName(tuitionId, fields.name as string);
+  const batch = (await Batch.create({ ...fields, tuitionId }).catch(asDuplicateName)) as BatchDoc;
   return { batch: batchOut(batch, await teacherNames(tuitionId), 0, EMPTY_SUMMARY) };
 });

@@ -32,15 +32,8 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
     // Turning a login off signs it out everywhere.
     if (!teacher.active) teacher.tokenVersion += 1;
   }
+  // Their subjects here are a profile; batch assignments are kept as they are and changed from the batch.
   await teacher.save();
-
-  // A teacher who no longer teaches a subject leaves the batches they taught it to.
-  if (body.subjects !== undefined) {
-    await Batch.updateMany(
-      { tuitionId, "teachers.teacherId": teacher._id },
-      { $pull: { teachers: { teacherId: teacher._id, subject: { $nin: teacher.subjects } } } }
-    );
-  }
   const batches = (await Batch.find({ tuitionId, "teachers.teacherId": teacher._id })) as BatchDoc[];
   return { teacher: teacherOut(teacher, batches) };
 });
