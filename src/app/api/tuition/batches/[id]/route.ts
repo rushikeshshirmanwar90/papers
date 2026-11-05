@@ -17,11 +17,16 @@ type Ctx = { params: { id: string } };
 
 /**
  * A batch with its students and syllabus coverage. Coverage scans the question
- * bank, so screens that don't show it ask with ?coverage=0 and get {}.
+ * bank, so screens that don't show it ask with ?coverage=0 and get {}. Screens
+ * that show only the coverage ask with ?coverage=only and get no students.
  */
 export const GET = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const batch = await findBatch(tuitionId, params.id);
+  if (req.nextUrl.searchParams.get("coverage") === "only") {
+    const coverage = await coverageFor([batch]);
+    return { batch: { id: String(batch._id), coverage: coverage.get(String(batch._id)) ?? {} }, students: [] };
+  }
   const [students, names, batchNameMap, coverage, classes] = await Promise.all([
     User.find({ tuitionId, role: "student", batchId: batch._id }).sort({ name: 1 }) as Promise<UserDoc[]>,
     teacherNames(tuitionId),
