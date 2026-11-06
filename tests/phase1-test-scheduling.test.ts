@@ -212,11 +212,24 @@ describe("setting a test", () => {
     await create(setup({ startNow: true, closesAt: iso(3 * HOUR), marksPerQuestion: 2, negativeMarks: 3 }), 400);
   });
 
-  test("a teacher can only set tests in a subject they teach in that batch", async () => {
-    await create(setup({ startNow: true, closesAt: iso(3 * HOUR), subject: "Chemistry" }), 403);
+  test("a teacher may set a test for any subject of any batch of their tuition, never another tuition's", async () => {
+    // Not teaching Chemistry here, but the batch has it: the picked Physics questions don't belong to it.
+    await create(setup({ startNow: true, closesAt: iso(3 * HOUR), subject: "Chemistry" }), 400);
     await create(setup({ startNow: true, closesAt: iso(3 * HOUR), subject: "Biology" }), 400);
-    await create(setup({ startNow: true, closesAt: iso(3 * HOUR), subject: "Physics" }), 403, "otherTeacher");
+    await create(setup({ startNow: true, closesAt: iso(3 * HOUR) }), 200, "otherTeacher");
     await create(setup({ startNow: true, closesAt: iso(3 * HOUR) }), 403, "student");
+    const stranger = await m.Tuition.create({ name: "Tuition B" });
+    const foreign = await m.Batch.create({ tuitionId: stranger._id, name: "Foreign", track: "JEE", subjects: ["Physics"], teachers: [] });
+    await create(setup({ batchId: String(foreign._id), startNow: true, closesAt: iso(3 * HOUR) }), 404);
+    await create(setup({ batchIds: [ids.batch, String(foreign._id)], startNow: true, closesAt: iso(3 * HOUR) }), 404);
+  });
+
+  test("batches of different exams or classes can't share a test, and questions must belong to the exam", async () => {
+    const tuitionId = (await m.Batch.findById(ids.batch))!.tuitionId;
+    const neet = await m.Batch.create({ tuitionId, name: "NEET", track: "NEET", subjects: ["Physics"], teachers: [] });
+    await create(setup({ batchIds: [ids.batch, String(neet._id)], startNow: true, closesAt: iso(3 * HOUR) }), 400);
+    const twelfth = await m.Batch.create({ tuitionId, name: "12 JEE", track: "JEE", standard: "12th", subjects: ["Physics"], teachers: [] });
+    await create(setup({ batchId: String(twelfth._id), startNow: true, closesAt: iso(3 * HOUR) }), 400); // 11th questions, 12th batch
   });
 
   test("a batch whose program has no question bank can't get a test", async () => {

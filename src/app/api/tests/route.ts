@@ -1,9 +1,9 @@
-import { hasManagedAccess, accessOf, audienceBatches, rosterStudents } from '@/lib/test-access';
+import { hasManagedAccess, accessOf, audienceBatches, mustBeBankQuestions, rosterStudents, sharedScope } from '@/lib/test-access';
 import { requireUser } from "@/lib/auth";
 import { badRequest, HttpError, isObjectId, readJson, route, text } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
 import { pushToUsers } from "@/lib/push";
-import { batchFor, mustTeach } from "@/lib/teaching";
+import { batchForTest } from "@/lib/teaching";
 import { SUBJECTS, programOf, questionBankOf, type SchoolSubject } from "@/lib/school";
 import { readDuration, readMarking, readQuestions, readWhen, resolveSchedule, testSummaries } from "@/lib/tests";
 import { Types } from "mongoose";
@@ -25,7 +25,8 @@ export const GET = route(async (req) => {
   const session = await requireUser(req);
   const ids = await batchIdsOf(session);
   const filter: Record<string, unknown> = { tuitionId: session.tuitionId };
-  if (ids !== 'all') filter.$or = [{ batchId: { $in: ids } }, { batchIds: { $in: ids } }];
+  // A teacher also sees the tests they set, even for a batch they don't teach.
+  if (ids !== 'all') filter.$or = [{ batchId: { $in: ids } }, { batchIds: { $in: ids } }, ...(session.role === 'teacher' ? [{ teacherId: session.user._id }] : [])];
   if (session.role === 'student') {
     const mine = await TestAttempt.distinct('testId', { tuitionId: session.tuitionId, studentId: session.user._id });
     filter.$or = [{ batchId: { $in: session.user.batchId ? [session.user.batchId] : [] } }, { batchIds: { $in: session.user.batchId ? [session.user.batchId] : [] } }, { _id: { $in: mine } }];
@@ -65,14 +66,17 @@ export const POST = route(async (req) => {
   // Refuse publication instead of silently stripping permissions and creating a legacy test.
   if (!TestRoom.schema.path('accessVersion') || !TestRoom.schema.path('roster') || !TestRoom.schema.path('audienceMode')) throw new HttpError(503, 'Restart the backend to load test access management before publishing this test.');
   if (body.audienceMode === undefined && Array.isArray(body.studentIds) && body.studentIds.length) throw badRequest('Choose Selected students only when selecting allowed students.');
-  const batch = await batchFor(session, Array.isArray(body.batchIds) ? body.batchIds[0] : body.batchId);
+  const batch = await batchForTest(session, Array.isArray(body.batchIds) ? body.batchIds[0] : body.batchId);
   // Only JEE and NEET have questions; other programs never borrow theirs.
   if (!questionBankOf(programOf(batch))) throw badRequest(`There is no question bank for ${batch.name}'s program yet, so a test can't be set for it.`);
   const subject = text(body, "subject", { required: true, max: 40, label: "a subject" })!;
   if (!(SUBJECTS as readonly string[]).includes(subject)) throw badRequest("Pick one of the batch's subjects.");
-  mustTeach(session, batch, subject as SchoolSubject);
+  if (!batch.subjects.includes(subject as SchoolSubject)) throw badRequest(`${subject} isn't one of ${batch.name}'s subjects.`);
 
   const batches = await audienceBatches(session, body.batchIds ?? [body.batchId], subject);
+  const scope = sharedScope(batches, subject, text(body, "standard", { max: 10 }) ?? "");
+  const questions = readQuestions(body.questions);
+  await mustBeBankQuestions(scope, questions);
   const candidates = await rosterStudents(session.tuitionId, batches.map(b => b._id));
   if (body.audienceMode !== undefined && !['all', 'selected'].includes(String(body.audienceMode))) throw badRequest('Choose a valid audience mode.');
   const audienceMode = body.audienceMode === 'selected' ? 'selected' : 'all';
@@ -100,7 +104,7 @@ export const POST = route(async (req) => {
     title: text(body, "title", { required: true, max: 120, label: "a test name" }),
     subject,
     standard: text(body, "standard", { max: 10 }) ?? batch.standard ?? "",
-    questions: readQuestions(body.questions),
+    questions,
     ...readMarking(body),
     durationMinutes,
     opensAt,

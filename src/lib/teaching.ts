@@ -19,6 +19,18 @@ export async function batchFor(session: Session, rawId: unknown): Promise<BatchD
   return batch;
 }
 
+/**
+ * A batch of the user's own tuition, for setting a test. A teacher may set a test
+ * for any batch of the tuition (not only the ones they teach); other tuitions' batches stay 404.
+ */
+export async function batchForTest(session: Session, rawId: unknown): Promise<BatchDoc> {
+  const id = rawId !== null && typeof rawId === "object" ? String(rawId) : rawId;
+  if (!isObjectId(id)) throw notFound("This batch");
+  const batch = (await Batch.findOne({ _id: id, tuitionId: session.tuitionId })) as BatchDoc | null;
+  if (!batch || (session.role !== "teacher" && session.role !== "tuition")) throw notFound("This batch");
+  return batch;
+}
+
 /** The subjects the user teaches in this batch: all of them for the tuition. */
 export function subjectsTaught(session: Session, batch: BatchDoc): SchoolSubject[] {
   if (session.role === "tuition") return batch.subjects;
