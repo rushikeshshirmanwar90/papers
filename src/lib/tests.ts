@@ -134,7 +134,7 @@ export async function testFor(session: Session, id: unknown) {
     if (!(await accessOf(test, session)).visible) throw notFound('This test');
   } else if (session.role === 'teacher') {
     const visible = await Promise.all(batchesOfTest(test).map(id => batchFor(session, id).then(() => true, () => false)));
-    if (!visible.some(Boolean)) throw notFound('This test');
+    if (!visible.some(Boolean) && String(test.teacherId) !== session.userId) throw notFound('This test');
   }
   const canEdit = session.role === "tuition" || (session.role === "teacher" && String(test.teacherId) === session.userId);
   await hydrateCompletion(test);

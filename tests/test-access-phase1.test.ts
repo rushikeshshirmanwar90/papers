@@ -267,9 +267,9 @@ test('restricted students cannot use events, monitor or results; no-batch users 
  const listed=await json(await m.listRoute.GET(req('GET','/api/tests?upcoming=1','s2'),{params:{}}),200);assert.ok(!listed.tests.some((x: {id:string}) => x.id === t.id));
  await m.User.updateOne({_id:ids.s2},{batchId:ids.batch});
 });
-test('teacher must teach the subject in every selected batch',async()=>{
+test('a teacher may combine batches they do not teach in',async()=>{
  const b=await m.Batch.create({tuitionId:ids.tuition,name:'Unauthorized Physics',track:'JEE',subjects:['Physics','Chemistry'],teachers:[{teacherId:ids.teacher,subject:'Chemistry'}]});
- await createManaged({batchIds:[ids.batch,String(b._id)]},403);
+ await createManaged({batchIds:[ids.batch,String(b._id)]},200);
 });
 test('selected-only roster, restricted chip/list, exact grants and existing attempts', async () => {
  const { test: t } = await createManaged({ audienceMode: 'selected', studentIds: [ids.s1] });
