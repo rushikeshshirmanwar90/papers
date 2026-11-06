@@ -14,6 +14,7 @@ const nextConfig = {
       "/api/question-paper-pdf": [
         "./node_modules/@sparticuz/chromium/bin/**",
         "./node_modules/@fontsource/noto-sans/files/noto-sans-{latin,latin-ext,greek}-{400-normal,400-italic,700-normal}.woff2",
+        "./node_modules/@fontsource/noto-serif/files/noto-serif-{latin,latin-ext,greek}-{400-normal,400-italic,700-normal}.woff2",
         "./node_modules/@fontsource/noto-sans-math/files/noto-sans-math-latin-400-normal.woff2",
       ],
     },

@@ -9,6 +9,9 @@ export type JoinStatus = (typeof JOIN_STATUSES)[number];
  * request, the institute's teacher code a teacher request. The tuition
  * approves or rejects it.
  */
+export const JOIN_SOURCES = ["join_code", "admin_created"] as const;
+export type JoinSource = (typeof JOIN_SOURCES)[number];
+
 export interface JoinRequestDoc extends Document {
   userId: Types.ObjectId;
   tuitionId: Types.ObjectId;
@@ -22,6 +25,8 @@ export interface JoinRequestDoc extends Document {
   /** What they were accepted as. */
   acceptedAs: "student" | "teacher" | null;
   decidedAt: Date | null;
+  /** How this request was created: join_code (student/teacher used a code) or admin_created (tuition admin created the student). */
+  source: JoinSource;
   createdAt: Date;
 }
 
@@ -35,6 +40,7 @@ const JoinRequestSchema = new Schema<JoinRequestDoc>(
     status: { type: String, enum: JOIN_STATUSES, default: "pending" },
     acceptedAs: { type: String, enum: ["student", "teacher", null], default: null },
     decidedAt: { type: Date, default: null },
+    source: { type: String, enum: JOIN_SOURCES, default: "join_code" },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

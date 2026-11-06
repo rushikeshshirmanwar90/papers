@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import Question, { NOT_A_BANK_COPY } from "@/models/Question";
 import { buildFilter } from "@/lib/queryFilters";
+import { examFilterOf } from "@/lib/examFilter";
+import { HttpError } from "@/lib/http";
 
 // Chapters and topics grow with every upload. Without this, Next pre-renders
 // the route at build time and keeps serving that (often empty) snapshot.
@@ -30,9 +32,17 @@ const nonEmpty = (values: unknown[]) =>
 // returns by default, i.e. everything but Descriptive questions.
 // chapterTopics lists each chapter's topics, for picking topics across
 // several chapters; ?chapter may repeat to narrow topics to several.
+// ?exam=JEE|NEET narrows all of it to that exam's questions (lib/examBank.ts).
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   try {
+    let exam: ReturnType<typeof examFilterOf>;
+    try {
+      exam = examFilterOf(searchParams);
+    } catch (error) {
+      if (error instanceof HttpError) return NextResponse.json({ error: error.message }, { status: error.status });
+      throw error;
+    }
     await connectDB();
 
     const scope = new URLSearchParams(searchParams);
@@ -50,7 +60,14 @@ export async function GET(req: NextRequest) {
     // One pass over the selection gives every chapter, every topic, and both counts.
     const [groups, subjects] = await Promise.all([
       Question.aggregate<{ _id: { chapter?: string; topic?: string }; count: number }>([
-        { $match: { ...buildFilter(scope, "subject"), ...NOT_A_BANK_COPY } },
+        {
+          $match: {
+            ...buildFilter(scope, "subject"),
+            ...NOT_A_BANK_COPY,
+            ...(exam ? { $and: exam.conditions } : {}),
+            ...(exam?.subjects ? { subject: { $in: exam.subjects } } : {}),
+          },
+        },
         {
           $group: {
             _id: { chapter: "$chapter", topic: "$topic" },

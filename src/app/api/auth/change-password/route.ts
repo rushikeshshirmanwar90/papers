@@ -24,6 +24,9 @@ export const POST = route(async (req) => {
 
   user.passwordHash = await hashPassword(next);
   user.tokenVersion += 1;
+  const wasInvited = user.mustChangePassword;
+  user.mustChangePassword = false;
+  if (wasInvited && user.accountStatus === "invited") user.accountStatus = "active";
   await user.save();
   return { token: await signToken(user), user: await publicUser(user) };
 });

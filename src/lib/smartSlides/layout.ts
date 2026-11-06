@@ -7,7 +7,8 @@
 // checks they match.
 //
 // The server never sizes a slide from the estimates below: it measures each
-// question in Chrome and grows its area, or gives it a whole slide, as needed
+// question in Chrome and grows its area, or gives it a whole slide, as needed;
+// a question is never split across slides
 // (papers/src/lib/smartSlides/html.ts). The estimates only draw the app's
 // sample slide.
 // Plain TypeScript with no imports, so both projects can run it as is.
@@ -15,6 +16,8 @@
 export type SlideTheme = "dark" | "green" | "white";
 export type SlideFontSize = "small" | "medium" | "large";
 export type McqLayoutSetting = "auto" | "horizontal" | "grid" | "vertical";
+/** The fonts a slide can be set in: the server bundles these, and no others. */
+export type SlideFontFamily = "noto-sans" | "noto-serif";
 export type McqLayout = Exclude<McqLayoutSetting, "auto">;
 
 /** What a teacher can change; remembered per teacher on their phone. */
@@ -25,6 +28,7 @@ export interface SmartSlideSettings {
   fontSize: SlideFontSize;
   mcqLayout: McqLayoutSetting;
   showInstitute: boolean;
+  fontFamily: SlideFontFamily;
 }
 
 export const DEFAULT_SMART_SLIDE_SETTINGS: SmartSlideSettings = {
@@ -33,6 +37,7 @@ export const DEFAULT_SMART_SLIDE_SETTINGS: SmartSlideSettings = {
   fontSize: "medium",
   mcqLayout: "auto",
   showInstitute: true,
+  fontFamily: "noto-sans",
 };
 
 export const QUESTION_AREA_RANGE = { min: 25, max: 50, step: 5 };
@@ -46,6 +51,10 @@ export const FONT_SIZE_CHOICES: { value: SlideFontSize; label: string }[] = [
   { value: "small", label: "Small" },
   { value: "medium", label: "Medium" },
   { value: "large", label: "Large" },
+];
+export const FONT_FAMILY_CHOICES: { value: SlideFontFamily; label: string }[] = [
+  { value: "noto-sans", label: "Sans" },
+  { value: "noto-serif", label: "Serif" },
 ];
 export const MCQ_LAYOUT_CHOICES: { value: McqLayoutSetting; label: string }[] = [
   { value: "auto", label: "Auto" },
@@ -83,6 +92,7 @@ export function normalizeSlideSettings(raw: unknown): SmartSlideSettings {
     fontSize: pick(r.fontSize, FONT_SIZE_CHOICES, d.fontSize),
     mcqLayout: pick(r.mcqLayout, MCQ_LAYOUT_CHOICES, d.mcqLayout),
     showInstitute: typeof r.showInstitute === "boolean" ? r.showInstitute : d.showInstitute,
+    fontFamily: pick(r.fontFamily, FONT_FAMILY_CHOICES, d.fontFamily),
   };
 }
 

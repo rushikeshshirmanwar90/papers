@@ -6,10 +6,10 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { after, describe, test } from "node:test";
 import { loadPdfjs } from "@/lib/pdfjsNode";
-import { richText, richTokens, type PaperQuestion, type QuestionPaper } from "@/lib/questionPaper/html";
+import { type PaperQuestion, type QuestionPaper } from "@/lib/questionPaper/html";
 import { parsePaper } from "@/lib/questionPaper/parse";
 import { renderSlides, setBrowserLauncherForTests } from "@/lib/questionPaper/render";
-import { FIGURE_PX, MEDIUM_MAX_SHARE, minFontPx, smartSlidesHtml, type SlideFitResult } from "@/lib/smartSlides/html";
+import { FIGURE_PX, LAST_RESORT_FONT_PX, MEDIUM_MAX_SHARE, minFontPx, smartSlidesHtml, type SlideFitResult } from "@/lib/smartSlides/html";
 import {
   DEFAULT_SMART_SLIDE_SETTINGS,
   FONT_PX,
@@ -65,6 +65,19 @@ const statements = (n: number) =>
     (_, i) => `Statement ${i + 1}: a block of mass \\(m\\) slides down a rough incline of angle \\(\\theta\\) with coefficient of friction \\(\\mu\\), starting from rest.`
   ).join(" ");
 
+/** Statements in the squeezed question: more than fit a slide at 80% of the chosen size, fewer than fit at the last-resort size. */
+const SQUEEZED_STATEMENTS = 22;
+
+/** Far too long for any slide, at any size. */
+const IMPOSSIBLE = (): PaperQuestion =>
+  q({
+    questionText: statements(160),
+    optionA: "Only statements 1 and 2 are correct",
+    optionB: "Only statements 3 and 4 are correct",
+    optionC: "All the statements are correct",
+    optionD: "None of the statements is correct",
+  });
+
 const S = {
   short: q({ questionText: "The SI unit of force is", optionA: "Newton", optionB: "Joule", optionC: "Watt", optionD: "Pascal" }),
   medium: q({
@@ -91,8 +104,9 @@ const S = {
     optionC: "All the statements are correct",
     optionD: "None of the statements is correct",
   }),
-  veryLong: q({
-    questionText: statements(40),
+  /** Too long for a whole slide at the preferred smallest size: it is kept whole by setting it smaller still. */
+  squeezed: q({
+    questionText: statements(SQUEEZED_STATEMENTS),
     optionA: "Only statements 1 and 2 are correct",
     optionB: "Only statements 3 and 4 are correct",
     optionC: "All the statements are correct",
@@ -168,16 +182,23 @@ describe("smart slide settings", () => {
 
   test("bad or out-of-range values fall back or are clamped to 25–50%", () => {
     const s = normalizeSlideSettings({ theme: "pink", questionAreaPct: 90, fontSize: "huge", mcqLayout: "grid", showInstitute: false });
-    assert.deepEqual(s, { theme: "dark", questionAreaPct: 50, fontSize: "medium", mcqLayout: "grid", showInstitute: false });
+    assert.deepEqual(s, { theme: "dark", questionAreaPct: 50, fontSize: "medium", mcqLayout: "grid", showInstitute: false, fontFamily: "noto-sans" });
     assert.equal(normalizeSlideSettings({ questionAreaPct: 3 }).questionAreaPct, 25);
     assert.equal(normalizeSlideSettings({ questionAreaPct: 37 }).questionAreaPct, 35);
   });
 
   test("saved settings round-trip through JSON; keys are per account", () => {
-    const saved: SmartSlideSettings = { theme: "green", questionAreaPct: 40, fontSize: "large", mcqLayout: "vertical", showInstitute: false };
+    const saved: SmartSlideSettings = { theme: "green", questionAreaPct: 40, fontSize: "large", mcqLayout: "vertical", showInstitute: false, fontFamily: "noto-serif" };
     assert.deepEqual(normalizeSlideSettings(JSON.parse(JSON.stringify(saved))), saved);
     assert.notEqual(slidePrefsKey("64b7f0c2a1b2c3d4e5f60718"), slidePrefsKey("64b7f0c2a1b2c3d4e5f60719"));
     assert.match(slidePrefsKey("a b/c"), /^[A-Za-z0-9._-]+$/);
+  });
+
+  test("the font is one of the bundled families; anything else (or a saved layout from before) is the default", () => {
+    assert.equal(normalizeSlideSettings({ fontFamily: "noto-serif" }).fontFamily, "noto-serif");
+    assert.equal(normalizeSlideSettings({ fontFamily: "Comic Sans" }).fontFamily, "noto-sans");
+    assert.equal(normalizeSlideSettings({ fontFamily: "../../etc/passwd" }).fontFamily, "noto-sans");
+    assert.equal(normalizeSlideSettings({ theme: "white" }).fontFamily, "noto-sans");
   });
 
   test("text is never set smaller than 80% of the chosen size, nor under the minimum", () => {
@@ -222,13 +243,11 @@ describe("slide HTML", () => {
     assert.ok(smartSlidesHtml(paperOf([S.short], { ...DEFAULT_SMART_SLIDE_SETTINGS, theme: "green" }), new Map()).includes("background: #24392C"));
   });
 
-  test("the stem as words prints the same as richText, and never cuts inside maths", () => {
-    for (const question of Object.values(S)) {
-      const tokens = richTokens(question.questionText);
-      const joined = tokens.map((t) => t.html + (t.after === " " ? " " : "<br>".repeat(t.after.length))).join("");
-      assert.equal(joined.replace(/\s+/g, " ").trim(), richText(question.questionText).replace(/\s+/g, " ").trim());
-      for (const t of tokens) assert.equal((t.html.match(/<math/g) ?? []).length, (t.html.match(/<\/math>/g) ?? []).length);
-    }
+  test("a serif Smart PDF carries the serif font and not the sans text face", () => {
+    const serif = smartSlidesHtml(paperOf([S.short], { ...DEFAULT_SMART_SLIDE_SETTINGS, fontFamily: "noto-serif" }), new Map());
+    assert.ok(serif.includes('font-family: "Noto Serif"'));
+    assert.ok(serif.includes('body { font-family: "Noto Serif", "Noto Sans Math", serif;'));
+    assert.ok(!serif.includes('font-family: "Noto Sans";'));
   });
 });
 
@@ -257,25 +276,48 @@ describe("slide layout, measured in Chrome", { skip: !haveChrome && "Chrome isn'
         // Medium keeps real writing space; full gets the whole slide and a blank slide after.
         if (entry.kind === "medium") assert.ok(entry.areaPx <= SLIDE.height * MEDIUM_MAX_SHARE + 1, `Q${entry.q} medium leaves room to write`);
         if (entry.kind === "full") assert.equal(entry.areaPx, SLIDE.height);
-        assert.equal(entry.blankAfter, entry.kind === "full" || (entry.kind === "continued" && entry.areaPx === SLIDE.height));
-        // Text is never made smaller than allowed.
-        assert.ok(entry.fontPx >= minFontPx(g.fontPx) && entry.fontPx <= g.fontPx);
-        // Questions that fit one slide stay on one slide, options included.
-        if (entry.q - 1 !== indexOf("veryLong")) assert.equal(entry.parts, 1, `Q${entry.q} is on one slide`);
+        assert.equal(entry.blankAfter, entry.kind === "full");
+        // Text is never made smaller than the last-resort size, and only the squeezed question goes under the preferred minimum.
+        assert.ok(entry.fontPx >= LAST_RESORT_FONT_PX && entry.fontPx <= g.fontPx, `Q${entry.q} text size ${entry.fontPx}`);
+        if (entry.q - 1 !== indexOf("squeezed")) assert.ok(entry.fontPx >= minFontPx(g.fontPx), `Q${entry.q} keeps its preferred minimum`);
       }
       // Long options don't split: the area grows instead.
       assert.notEqual(plan("longOptions").kind, "short");
       // The figure is shown at its readable size: the area grows when the preferred one is too small for it.
       if (g.contentHeight < FIGURE_PX) assert.notEqual(plan("diagram").kind, "short", "the area grows to show the figure");
-      // A question too long for any slide continues, its options together on the last part.
-      assert.equal(plan("veryLong").kind, "continued");
-      assert.ok(plan("veryLong").parts >= 2 && plan("veryLong").parts <= 6);
-      // Slides: every part, plus a writing slide after each full one.
-      const parts = fit.plan.reduce((n, e) => n + e.parts + (e.blankAfter ? 1 : 0), 0);
-      assert.equal(fit.stats.slides, parts);
+      // The squeezed question is too long for a slide at its preferred size: it stays whole, on the whole slide, with a writing slide after.
+      assert.equal(plan("squeezed").kind, "full");
+      assert.equal(plan("squeezed").blankAfter, true);
+      // One slide per question, plus a writing slide after each full one: nothing is ever split.
+      assert.equal(fit.stats.slides, fit.plan.length + fit.plan.filter((e) => e.blankAfter).length);
       assert.equal(fit.stats.blank, fit.plan.filter((e) => e.blankAfter).length);
     });
   }
+
+  test("a question too long at its preferred size is kept whole by smaller text, and says so", { timeout: 60000 }, async () => {
+    const settings = DEFAULT_SMART_SLIDE_SETTINGS;
+    const g = slideGeometry(settings);
+    const { fit } = await measure([S.short, S.squeezed], settings);
+    assert.deepEqual(errorsOf(fit), []);
+    assert.equal(fit.stats.slides, 3, "two questions and the writing slide of the long one");
+    const [, squeezed] = fit.plan;
+    assert.ok(squeezed.fontPx < minFontPx(g.fontPx) && squeezed.fontPx >= LAST_RESORT_FONT_PX, `set at ${squeezed.fontPx}px`);
+    assert.ok(fit.issues.some((issue) => issue.severity === "warning" && issue.kind === "text-small" && issue.where === "Question 2"));
+    assert.ok(!fit.issues.some((issue) => issue.where === "Question 1"));
+  });
+
+  test("a question whose options are too tall is given a more compact options layout instead of being split", { timeout: 60000 }, async () => {
+    const tall = q({
+      questionText: statements(14),
+      optionA: statements(2),
+      optionB: statements(2),
+      optionC: statements(2),
+      optionD: statements(2),
+    });
+    const { fit } = await measure([tall], { ...DEFAULT_SMART_SLIDE_SETTINGS, mcqLayout: "vertical" });
+    assert.deepEqual(errorsOf(fit), []);
+    assert.equal(fit.stats.slides, fit.plan[0].blankAfter ? 2 : 1);
+  });
 
   test("a chosen options layout is kept; the themes give the same layout", { timeout: 60000 }, async () => {
     for (const mcqLayout of ["horizontal", "grid", "vertical"] as const) {
@@ -289,15 +331,23 @@ describe("slide layout, measured in Chrome", { skip: !haveChrome && "Chrome isn'
     assert.deepEqual(plans[2], plans[0]);
   });
 
-  test("content that can't be shown legibly is refused at once, nothing printed", { timeout: 60000 }, async () => {
+  test("content that can't be shown legibly on one slide is refused at once, nothing printed", { timeout: 60000 }, async () => {
     const huge = q({ questionText: "W".repeat(6000), optionA: "1", optionB: "2", optionC: "3", optionD: "4" });
-    const started = Date.now();
-    const { fit, pdf, ms } = await renderSlides(smartSlidesHtml(paperOf([S.short, huge]), new Map()), DEFAULT_SMART_SLIDE_SETTINGS);
-    assert.equal(pdf, null);
-    assert.equal(ms.pdf, 0);
-    assert.ok(errorsOf(fit).some((issue) => issue.where === "Question 2"));
-    assert.ok(!errorsOf(fit).some((issue) => issue.where === "Question 1"));
-    assert.ok(Date.now() - started < 15000, `refused in ${Date.now() - started} ms`);
+    for (const impossible of [huge, IMPOSSIBLE()]) {
+      const started = Date.now();
+      const { fit, pdf, ms } = await renderSlides(smartSlidesHtml(paperOf([S.short, impossible]), new Map()), DEFAULT_SMART_SLIDE_SETTINGS);
+      assert.equal(pdf, null);
+      assert.equal(ms.pdf, 0);
+      assert.ok(errorsOf(fit).some((issue) => issue.where === "Question 2" && /never split/.test(issue.detail)));
+      assert.ok(!errorsOf(fit).some((issue) => issue.where === "Question 1"));
+      assert.ok(Date.now() - started < 15000, `refused in ${Date.now() - started} ms`);
+    }
+  });
+
+  test("a serif Smart PDF lays out like the sans one: every question still fits whole", { timeout: 60000 }, async () => {
+    const { fit } = await measure(all, { ...DEFAULT_SMART_SLIDE_SETTINGS, fontFamily: "noto-serif" });
+    assert.deepEqual(errorsOf(fit), []);
+    assert.equal(fit.plan.length, all.length);
   });
 });
 
@@ -310,15 +360,15 @@ describe("one mixed Smart PDF, printed and read back", { skip: !haveChrome && "C
     assert.ok(pdf, "printed");
     console.log(
       `[smart-pdf test] ${questions.length} questions → ${fit.stats.slides} slides ` +
-        `(${fit.stats.short} short, ${fit.stats.medium} medium, ${fit.stats.full} full, ${fit.stats.continued} continued, ${fit.stats.blank} writing); ` +
-        `ms ${JSON.stringify(ms)}; plan ${fit.plan.map((e) => `Q${e.q}:${e.kind}${e.parts > 1 ? "×" + e.parts : ""}${e.blankAfter ? "+blank" : ""}`).join(" ")}`
+        `(${fit.stats.short} short, ${fit.stats.medium} medium, ${fit.stats.full} full, ${fit.stats.blank} writing); ` +
+        `ms ${JSON.stringify(ms)}; plan ${fit.plan.map((e) => `Q${e.q}:${e.kind}@${e.fontPx}px${e.blankAfter ? "+blank" : ""}`).join(" ")}`
     );
 
     // The page each slide should print on, from the measured plan.
-    const expected: { q: number; part: number; parts: number; blank: boolean; areaPx: number }[] = [];
+    const expected: { q: number; blank: boolean; areaPx: number }[] = [];
     for (const e of fit.plan) {
-      for (let part = 1; part <= e.parts; part++) expected.push({ q: e.q, part, parts: e.parts, blank: false, areaPx: part === e.parts ? e.areaPx : SLIDE.height });
-      if (e.blankAfter) expected.push({ q: e.q, part: 0, parts: e.parts, blank: true, areaPx: 0 });
+      expected.push({ q: e.q, blank: false, areaPx: e.areaPx });
+      if (e.blankAfter) expected.push({ q: e.q, blank: true, areaPx: 0 });
     }
 
     const pdfjs = await loadPdfjs();
@@ -327,6 +377,7 @@ describe("one mixed Smart PDF, printed and read back", { skip: !haveChrome && "C
     assert.equal(doc.numPages, expected.length, "one page per measured slide, nothing more");
     const toPt = 72 / 96;
     const optionPages = new Map<number, number[]>();
+    const labelPages = new Map<number, number[]>();
     for (let n = 1; n <= doc.numPages; n++) {
       const want = expected[n - 1];
       const page = await doc.getPage(n);
@@ -341,9 +392,9 @@ describe("one mixed Smart PDF, printed and read back", { skip: !haveChrome && "C
         assert.equal(images, 0, `page ${n} is a blank writing slide`);
         continue;
       }
-      const all = texts.map((t) => t.str).join(" ");
-      const label = want.parts > 1 ? `Q${want.q}${want.part > 1 ? " (continued)" : ""} · ${want.part}/${want.parts}` : `Q${want.q}`;
-      assert.ok(all.includes(label), `page ${n} is labelled "${label}"`);
+      const label = `Q${want.q}`;
+      assert.ok(texts.some((t) => t.str.trim() === label), `page ${n} is labelled "${label}"`);
+      labelPages.set(want.q, [...(labelPages.get(want.q) ?? []), n]);
       for (const t of texts) {
         const x = t.transform[4];
         const fromTop = height - t.transform[5];
@@ -355,6 +406,8 @@ describe("one mixed Smart PDF, printed and read back", { skip: !haveChrome && "C
       if (marks.length) optionPages.set(want.q, [...(optionPages.get(want.q) ?? []), n]);
       if (marks.length) assert.deepEqual(marks.sort(), ["(A)", "(B)", "(C)", "(D)"], `page ${n}: all four options together`);
     }
+    // Every question is on exactly one page: never split.
+    questions.forEach((_, i) => assert.equal((labelPages.get(i + 1) ?? []).length, 1, `Q${i + 1} is on one page`));
     // Every MCQ's options are on exactly one page; a numerical question has none.
     questions.forEach((question, i) => {
       const pages = optionPages.get(i + 1) ?? [];

@@ -4,6 +4,8 @@ import katex from "katex";
 import { splitLatex } from "./latex";
 import { PAGE_MARGIN_MM, TEXT_INSET_MM } from "./layoutFit";
 import { splitMath } from "./mathBreak";
+import { FONT_SIZE_PT, normalizePaperStyle, SPACING_VALUES, type PaperFont, type PaperStyle } from "./style";
+import { watermarkColor, watermarkCss, watermarkHtml } from "./watermark";
 import type { SmartSlideSettings } from "../smartSlides/layout";
 
 // The question paper as one printable HTML page: an A4 sheet in a frame, the
@@ -54,6 +56,12 @@ export interface QuestionPaper {
   format?: "exam" | "smart";
   /** The Smart PDF's layout, when format is "smart". */
   slides?: SmartSlideSettings;
+  /** Printed faintly across every page of the exam paper; empty or missing for none. Never on a Smart PDF. */
+  watermark?: string;
+  /** The exam paper's font, size, columns, spacing and watermark strength; missing means the defaults. Not used by a Smart PDF. */
+  style?: PaperStyle;
+  /** The institute's logo as a data URI, printed in the header when the style asks for it. Set by the route from the account's own tuition. */
+  logo?: string;
 }
 
 /** Figures as data URIs, by URL; null for one that couldn't be loaded. */
@@ -98,55 +106,6 @@ export function richText(text: string | undefined): string {
       }
     })
     .join("");
-}
-
-/** One word (or formula) of a text, as richTokens returns it. */
-export interface RichToken {
-  html: string;
-  /** What separates it from the next token: "" (last), " ", or one or more line breaks. */
-  after: "" | " " | `\n${string}`;
-  /** It ends a sentence or clause, a good place to continue on another slide. */
-  sentenceEnd: boolean;
-}
-
-/**
- * The same text as richText, as words and whole formulas, so a slide can be
- * cut between any two of them. Joined back (a space, or <br> per line break,
- * between them) it prints just as richText does.
- */
-export function richTokens(text: string | undefined): RichToken[] {
-  const tokens: { html: string; raw: string; after: string }[] = [];
-  const glue = (html: string, raw: string) => {
-    const last = tokens[tokens.length - 1];
-    if (last && last.after === "") {
-      last.html += html;
-      last.raw += raw;
-    } else tokens.push({ html, raw, after: "" });
-  };
-  for (const piece of splitLatex(text ?? "")) {
-    if (piece.kind === "math") {
-      let html: string;
-      try {
-        html = mathHtml(piece.value, piece.display);
-      } catch {
-        html = escapeHtml(piece.value);
-      }
-      glue(html, "$");
-      continue;
-    }
-    for (const part of piece.value.split(/(\s+)/)) {
-      if (!part) continue;
-      if (/^\s+$/.test(part)) {
-        const last = tokens[tokens.length - 1];
-        if (last) last.after = part.includes("\n") ? "\n".repeat((part.match(/\n/g) ?? []).length) : " ";
-      } else glue(escapeHtml(part), part);
-    }
-  }
-  return tokens.map((token, i) => ({
-    html: token.html,
-    after: i === tokens.length - 1 ? "" : ((token.after || " ") as RichToken["after"]),
-    sentenceEnd: /[.?!;:]["')\]]*$/.test(token.raw),
-  }));
 }
 
 function figureTags(urls: string[], embedded: EmbeddedFigures): string {
@@ -239,22 +198,37 @@ const TEXT_STYLES = [
 
 const fontData = (file: string) => `url(data:font/woff2;base64,${readFileSync(path.join(FONT_FILES, file)).toString("base64")})`;
 
-let fontCss: string | null = null;
-export function fontFaces(): string {
-  fontCss ??= [
-    ...TEXT_STYLES.flatMap(({ weight, style, file }) =>
-      Object.entries(TEXT_RANGES).map(
-        ([subset, range]) =>
-          `@font-face { font-family: "Noto Sans"; font-weight: ${weight}; font-style: ${style}; ` +
-          `src: ${fontData(`noto-sans/files/noto-sans-${subset}-${file}.woff2`)} format("woff2"); unicode-range: ${range}; }`
-      )
-    ),
-    // The whole math font: its MATH table draws fractions, roots and stretchy brackets.
-    `@font-face { font-family: "Noto Sans Math"; src: ${fontData(
-      "noto-sans-math/files/noto-sans-math-latin-400-normal.woff2"
-    )} format("woff2"); }`,
-  ].join("\n");
-  return fontCss;
+/** The text fonts a paper may use: the @fontsource package each is read from, its CSS name and fallback. */
+const TEXT_FONTS: Record<PaperFont, { dir: string; name: string; generic: string }> = {
+  "noto-sans": { dir: "noto-sans", name: "Noto Sans", generic: "sans-serif" },
+  "noto-serif": { dir: "noto-serif", name: "Noto Serif", generic: "serif" },
+};
+
+/** The CSS font stack for body text in this font; maths always uses the math font. */
+export const fontStack = (family: PaperFont) => `"${TEXT_FONTS[family].name}", "Noto Sans Math", ${TEXT_FONTS[family].generic}`;
+
+const fontCss = new Map<PaperFont, string>();
+export function fontFaces(family: PaperFont = "noto-sans"): string {
+  const { dir, name } = TEXT_FONTS[family];
+  if (!fontCss.has(family)) {
+    fontCss.set(
+      family,
+      [
+        ...TEXT_STYLES.flatMap(({ weight, style, file }) =>
+          Object.entries(TEXT_RANGES).map(
+            ([subset, range]) =>
+              `@font-face { font-family: "${name}"; font-weight: ${weight}; font-style: ${style}; ` +
+              `src: ${fontData(`${dir}/files/${dir}-${subset}-${file}.woff2`)} format("woff2"); unicode-range: ${range}; }`
+          )
+        ),
+        // The whole math font: its MATH table draws fractions, roots and stretchy brackets.
+        `@font-face { font-family: "Noto Sans Math"; src: ${fontData(
+          "noto-sans-math/files/noto-sans-math-latin-400-normal.woff2"
+        )} format("woff2"); }`,
+      ].join("\n")
+    );
+  }
+  return fontCss.get(family)!;
 }
 
 // ─── Sheet header ──────────────────────────────────────────────────────────
@@ -292,10 +266,14 @@ function field(label: string, value: string): string {
 /** What a page of the paper is, for the line under the heading. */
 type Part = { kind: "questions" | "key" | "solutions"; label: string };
 
+/** The logo to print in the header: the account's own, only when the style asks for it. */
+const logoOf = (paper: QuestionPaper) => (paper.style?.logo && paper.logo ? paper.logo : "");
+
 function sheetHeader(paper: QuestionPaper, part: Part): string {
   const totalMarks = paper.questions.length * paper.marksPerQuestion;
   const institute = paper.institute.trim() || "Question paper";
-  return `<header class="sheet-head">
+  const logo = logoOf(paper);
+  return `<header class="sheet-head${logo ? " has-logo" : ""}">${logo ? `<img class="logo" src="${logo}" alt="">` : ""}
     <h1 class="institute${institute.length > 42 ? " long" : ""}">${escapeHtml(institute)}</h1>
     <div class="details">
       <div class="side">${field("Subject", paper.subject)}${field("Standard", standardLabel(paper.standard))}${field("Total Mark", String(totalMarks))}</div>
@@ -356,6 +334,9 @@ function answerTable(section: Section): string {
 
 export function questionPaperHtml(paper: QuestionPaper, embedded: EmbeddedFigures): string {
   const sections = sectionsOf(paper);
+  const style = paper.style ?? normalizePaperStyle(undefined);
+  const spacing = SPACING_VALUES[style.spacing];
+  const fonts = fontStack(style.fontFamily);
 
   const columns = (showAnswer: boolean) =>
     `<div class="columns">${sections
@@ -379,24 +360,29 @@ export function questionPaperHtml(paper: QuestionPaper, embedded: EmbeddedFigure
 <meta charset="utf-8">
 <title>${escapeHtml(paper.title)}</title>
 <style>
-  ${fontFaces()}
+  ${fontFaces(style.fontFamily)}
   @page {
     size: A4;
     margin: ${PAGE_MARGIN_MM.top}mm ${PAGE_MARGIN_MM.side}mm ${PAGE_MARGIN_MM.bottom}mm;
-    @bottom-center { content: counter(page); font: 9pt "Noto Sans", sans-serif; color: #1a1a1a; vertical-align: top; padding-top: 3mm; }
+    @bottom-center { content: counter(page); font: 9pt ${fonts}; color: #1a1a1a; vertical-align: top; padding-top: 3mm; }
   }
   * { box-sizing: border-box; }
-  body { font-family: "Noto Sans", "Noto Sans Math", sans-serif; font-size: 9.8pt; line-height: 1.38; color: #1a1a1a; margin: 0; }
+  body { font-family: ${fonts}; font-size: ${FONT_SIZE_PT[style.fontSize]}pt; line-height: ${spacing.lineHeight}; color: #1a1a1a; margin: 0; }
   math { font-family: "Noto Sans Math", math; font-size: 1.05em; }
 
   /* The frame repeats on every page; the text sits a little inside it. */
-  .frame { position: fixed; inset: 0; border: 1px solid #1a1a1a; }
+  .frame { position: fixed; inset: 0; border: 1px solid #1a1a1a; }${paper.watermark ? watermarkCss(watermarkColor(style.watermarkOpacity)) : ""}
   .part { break-before: page; padding: 0 ${TEXT_INSET_MM}mm; }
   .part:first-of-type { break-before: auto; }
 
   .sheet-head { margin: 0 -${TEXT_INSET_MM}mm 4mm; padding: 4mm ${TEXT_INSET_MM * 2}mm 2.5mm; border-bottom: 1px solid #1a1a1a; }
   .institute { margin: 0 0 6mm; text-align: center; font-size: 23pt; line-height: 1.2; font-weight: 700; }
   .institute.long { font-size: 17pt; }
+  .institute { overflow-wrap: anywhere; }
+  /* The logo sits at the left of the institute's name, which keeps clear of it. */
+  .sheet-head { position: relative; }
+  .logo { position: absolute; left: ${TEXT_INSET_MM * 2}mm; top: 3mm; height: 13mm; width: auto; max-width: 30mm; object-fit: contain; }
+  .has-logo .institute { padding: 0 34mm; }
   .details { display: grid; grid-template-columns: 1fr 1.2fr 1fr; align-items: start; gap: 4mm; font-size: 10.5pt; }
   .field { display: grid; grid-template-columns: 24mm 1fr; margin: 0 0 1.6mm; }
   .side.right .field { grid-template-columns: 19mm 1fr; margin-left: auto; max-width: 52mm; }
@@ -405,13 +391,13 @@ export function questionPaperHtml(paper: QuestionPaper, embedded: EmbeddedFigure
   .heading { font-size: 15pt; font-weight: 700; line-height: 1.25; color: #26283a; overflow-wrap: anywhere; }
   .part-label { margin-top: 3mm; font-size: 10.5pt; font-weight: 700; }
 
-  .columns { column-count: 2; column-gap: 9mm; column-rule: 1px solid #1a1a1a; column-fill: auto; padding: 3mm 0; box-decoration-break: clone; }
+  .columns { column-count: ${style.columns}; column-gap: 9mm; column-rule: ${style.columns === 2 ? "1px solid #1a1a1a" : "none"}; column-fill: auto; padding: 3mm 0; box-decoration-break: clone; }
   .section-title { display: flex; align-items: center; gap: 1.5mm; margin: 0 0 4mm; break-after: avoid; break-inside: avoid; }
   .section-title::before, .section-title::after { content: ""; flex: 1; border-bottom: 1.5px dotted #1a1a1a; min-width: 2mm; }
   .section-title span { padding: 1.2mm 3mm; border: 1px solid #1a1a1a; outline: 1px solid #1a1a1a; outline-offset: 1px; font-size: 12.5pt; font-weight: 700; color: #26283a; text-align: center; }
   .section-title small { font-size: 8.5pt; font-weight: 400; color: #1a1a1a; }
 
-  .question { position: relative; padding-left: 8mm; margin: 0 0 3.2mm; }
+  .question { position: relative; padding-left: 8mm; margin: 0 0 ${spacing.questionGapMm}mm; }
   .stem { orphans: 2; widows: 2; }
   /* Whatever a box holds wraps inside it: nothing may push it wider than its column. */
   .question, .options, .option, .solution, .stem, .source, .solution-head, .solution-body, .field span, .heading { min-width: 0; max-width: 100%; }
@@ -455,6 +441,7 @@ export function questionPaperHtml(paper: QuestionPaper, embedded: EmbeddedFigure
 </head>
 <body>
   <div class="frame"></div>
+  ${paper.watermark ? watermarkHtml(paper.watermark, escapeHtml) : ""}
   ${parts.join("\n")}
 </body>
 </html>`;

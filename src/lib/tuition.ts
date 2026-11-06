@@ -288,7 +288,7 @@ export function batchOut(batch: BatchDoc, names: NameMap, studentCount: number, 
 
 export async function studentCounts(tuitionId: string): Promise<Map<string, number>> {
   const counts = await User.aggregate<{ _id: Types.ObjectId; n: number }>([
-    { $match: { tuitionId: new Types.ObjectId(tuitionId), role: "student", batchId: { $ne: null } } },
+    { $match: { tuitionId: new Types.ObjectId(tuitionId), role: "student", batchId: { $ne: null }, accountStatus: { $ne: "invited" } } },
     { $group: { _id: "$batchId", n: { $sum: 1 } } },
   ]);
   return new Map(counts.map((c) => [String(c._id), c.n]));
@@ -324,6 +324,10 @@ export function studentOut(student: UserDoc, batchNames: NameMap) {
     standard: student.standard ?? null,
     batch: batchId ? { id: batchId, name: batchNames.get(batchId) ?? "" } : null,
     active: student.active,
+    accountStatus: student.accountStatus ?? "active",
+    invitationStatus: student.invitationStatus ?? null,
+    invitedAt: student.invitedAt ?? null,
+    mustChangePassword: student.mustChangePassword ?? false,
     lastLoginAt: student.lastLoginAt,
     createdAt: student.createdAt,
   };

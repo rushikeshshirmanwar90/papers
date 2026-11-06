@@ -203,3 +203,61 @@ describe("assigning teachers to a batch", () => {
     assert.equal((await m.Batch.findById(batchId))!.teachers.length, before);
   });
 });
+
+describe("a batch's syllabus coverage on its own", () => {
+  let batchId: string;
+  const get = (path: string, who: string, id = batchId) => m.batch.GET(req("GET", `/api/tuition/batches/${id}${path}`, who), ctx(id));
+
+  before(async () => {
+    const { Types } = await import("mongoose");
+    const Question = (await import("@/models/Question")).default;
+    const SyllabusProgress = (await import("@/models/SyllabusProgress")).default;
+    batchId = (await createBatch("Coverage A")).batch.id;
+    await m.User.create({ email: "cov-student@test.local", name: "Cov Student", passwordHash: "x", role: "student", tuitionId: ids.tuition, batchId, emailVerified: true });
+    // A small question bank (in the throwaway test database): Physics has 2 units, Chemistry 1, Biology none.
+    const q = (subject: string, chapter: string, topic: string, n: number) => ({ paperId: new Types.ObjectId(), questionNumber: n, subject, examCategory: "JEE/NEET", standard: "11th", chapter, topic, questionText: `q${n}` });
+    await Question.insertMany([q("Physics", "Kinematics", "Projectiles", 1), q("Physics", "Kinematics", "Relative Motion", 2), q("Chemistry", "Atoms", "", 3)]);
+    const done = (subject: string, chapter: string, topic: string) => ({ tuitionId: ids.tuition, batchId, subject, standard: "11th", chapter, topic, coveredOn: new Date(), teacherId: ids.asha });
+    // One real unit covered, and one that isn't in the bank (ignored).
+    await SyllabusProgress.insertMany([done("Physics", "Kinematics", "Projectiles"), done("Physics", "Optics", "Lenses")]);
+  });
+
+  test("?coverage=only gives the same coverage as the full response", async () => {
+    const full = await json(await get("", "owner"), 200);
+    const only = await json(await get("?coverage=only", "owner"), 200);
+    assert.deepEqual(only.batch.coverage, full.batch.coverage);
+    assert.deepEqual(only.batch.coverage, {
+      Physics: { covered: 1, total: 2, percent: 50 },
+      Chemistry: { covered: 0, total: 1, percent: 0 },
+      Biology: { covered: 0, total: 0, percent: 0 },
+    });
+    assert.equal(only.batch.id, batchId);
+  });
+
+  test("it skips the students and carries nothing else of the batch", async () => {
+    const full = await json(await get("", "owner"), 200);
+    const only = await json(await get("?coverage=only", "owner"), 200);
+    assert.equal(full.students.length, 1);
+    assert.deepEqual(only.students, []);
+    assert.deepEqual(Object.keys(only.batch).sort(), ["coverage", "id"]);
+    assert.doesNotMatch(JSON.stringify(only), /cov-student|Cov Student|asha|Removed teacher/);
+  });
+
+  test("the other forms of the request are unchanged", async () => {
+    const skipped = await json(await get("?coverage=0", "owner"), 200);
+    assert.deepEqual(skipped.batch.coverage, {});
+    assert.equal(skipped.students.length, 1);
+    assert.equal(skipped.batch.studentCount, 1);
+    assert.equal((await json(await get("?coverage=1", "owner"), 200)).batch.coverage.Physics.total, 2);
+  });
+
+  test("needs a login, the tuition admin role and this tuition's own batch", async () => {
+    const anonymous = new NextRequest(`${BASE}/api/tuition/batches/${batchId}?coverage=only`);
+    assert.equal((await m.batch.GET(anonymous, ctx(batchId))).status, 401);
+    assert.equal((await get("?coverage=only", "asha")).status, 403, "a teacher");
+    assert.equal((await get("?coverage=only", "outsider")).status, 403, "a teacher of another tuition");
+    assert.equal((await get("?coverage=only", "otherOwner")).status, 404, "another tuition's admin");
+    assert.equal((await get("?coverage=only", "owner", "not-an-id")).status, 404);
+    assert.equal((await get("?coverage=only", "owner", ids.owner)).status, 404, "an id that isn't a batch");
+  });
+});

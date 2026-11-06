@@ -239,12 +239,14 @@ export async function renderPdf(html: string, timeoutMs = DEFAULT_TIMEOUT_MS): P
  * Prints a question paper like renderPdf, after Chrome has measured it at its
  * printed width and fixed what doesn't fit (layoutFit.ts), then checks the PDF
  * itself. The report lists what is still wrong; `questions` is how many
- * numbered questions the PDF must show.
+ * numbered questions the PDF must show; `watermark` is the text printed
+ * across every page, which the check must not take for paper content.
  */
 export async function renderPaper(
   html: string,
   questions: number,
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  watermark = ""
 ): Promise<{ pdf: Uint8Array; layout: LayoutReport }> {
   const printed = await enqueue(html, timeoutMs, PAPER_FIT);
   const fit = printed.fit;
@@ -252,7 +254,7 @@ export async function renderPaper(
   const issues = [...(fit?.issues ?? [])];
   let pages = 0;
   try {
-    const checked = await checkPdf(pdf, { questions, figures: fit?.stats.rasterFigures ?? 0 });
+    const checked = await checkPdf(pdf, { questions, figures: fit?.stats.rasterFigures ?? 0, watermark });
     issues.push(...checked.issues);
     pages = checked.pages;
   } catch (error) {
@@ -266,7 +268,7 @@ export async function renderPaper(
 
 const unmeasured = (): SlideFitResult => ({
   issues: [{ severity: "error", kind: "check-failed", where: "Slides", detail: "The slides could not be measured." }],
-  stats: { slides: 0, questions: 0, short: 0, medium: 0, full: 0, continued: 0, blank: 0, shrunk: 0, equationsScaled: 0, readyMs: 0, layoutMs: 0 },
+  stats: { slides: 0, questions: 0, short: 0, medium: 0, full: 0, blank: 0, shrunk: 0, equationsScaled: 0, readyMs: 0, layoutMs: 0 },
   plan: [],
 });
 
