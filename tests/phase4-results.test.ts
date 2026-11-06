@@ -6,22 +6,23 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, before, describe, test } from "node:test";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { NextRequest } from "next/server";
 
 const BASE = "http://localhost:3000";
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
-let mongod: MongoMemoryServer;
+let mongod: MongoMemoryReplSet;
 let m: Awaited<ReturnType<typeof load>>;
 
 async function load() {
-  const [testRoute, resultsRoute, studentRoute, monitorRoute, startRoute, answersRoute, submitRoute, auth, db, results, marking] = await Promise.all([
+  const [testRoute, resultsRoute, studentRoute, monitorRoute, analysisRoute, startRoute, answersRoute, submitRoute, auth, db, results, marking] = await Promise.all([
     import("@/app/api/tests/[id]/route"),
     import("@/app/api/tests/[id]/results/route"),
     import("@/app/api/tests/[id]/results/[studentId]/route"),
     import("@/app/api/tests/[id]/monitor/route"),
+    import("@/app/api/analysis/test/[id]/route"),
     import("@/app/api/tests/[id]/start/route"),
     import("@/app/api/tests/[id]/answers/route"),
     import("@/app/api/tests/[id]/submit/route"),
@@ -35,6 +36,7 @@ async function load() {
     resultsRoute,
     studentRoute,
     monitorRoute,
+    analysisRoute,
     startRoute,
     answersRoute,
     submitRoute,
@@ -57,7 +59,7 @@ const names: Record<string, string> = {};
 let bankDigest = "";
 
 async function digest(collection: typeof m.Question.collection) {
-  const docs = await collection.find({}).sort({ _id: 1 }).toArray();
+  const docs = (await collection.find({}).sort({ _id: 1 }).toArray()).map((doc) => { delete doc.controlRevision; delete doc.updatedAt; return doc; }); // the room lock counter ticks on every locked read
   return `${docs.length}:${createHash("sha256").update(JSON.stringify(docs)).digest("hex")}`;
 }
 const bank = () => digest(m.Question.collection);
@@ -221,7 +223,7 @@ const own = async (id: string, who: string, status = 200): Promise<any> => json(
 const row = (r: any, who: string) => r.rankings.find((x: any) => x.student.id === ids[who]);
 
 before(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const uri = mongod.getUri();
   assert.match(uri, /^mongodb:\/\/127\.0\.0\.1:\d+\//, "tests must only run against the in-memory server");
   process.env.MONGODB_URI = uri;
@@ -541,6 +543,7 @@ describe("legacy and unusual data", () => {
 describe("data is only read", () => {
   test("scores, attempts, test questions and the question bank are unchanged by reading results; the monitor still works", async () => {
     const id = await standardTest();
+    await results(id); // first read after close settles any suspended attempt; later reads must not change data
     const before = [await attemptsDigest(), await roomsDigest(), await bank()];
     await results(id);
     await detail(id, "teacher", "s1");
@@ -644,4 +647,19 @@ describe("release: the actual response before and after closing", () => {
     for (const other of ["s1", "s2", "s3", "s6"]) assert.ok(!text.includes(ids[other]) && !text.includes(names[other]));
     assert.equal((await resultsRes(id, "s7")).status, 403);
   });
+});
+
+
+test("live tests with submitted attempts withhold teacher results, keys, solutions and averages", async () => {
+  const id = await room({ closesAt: new Date(Date.now() + 5 * HOUR) });
+  await attempt(id, "s1", { 0: "A" });
+  for (const who of ["teacher", "admin"]) {
+    await results(id, who, 409);
+    await detail(id, who, "s1", 409);
+    await json(await m.analysisRoute.GET(req("GET", `/api/analysis/test/${id}`, who), { params: { id } }), 409);
+    const body = await own(id, who);
+    assert.deepEqual(body.results, []);
+    assert.equal(body.test.averageScore, null);
+    assert.ok(body.questions.every((q: any) => !("correctAnswer" in q) && !("explanation" in q) && !("explanationDiagramUrls" in q)));
+  }
 });

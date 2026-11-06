@@ -1,3 +1,4 @@
+import { resultsReleased } from "@/lib/attempts";
 import { Types } from "mongoose";
 import { HttpError, route } from "@/lib/http";
 import { requireUser } from "@/lib/auth";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 export const GET = route<{ params: { id: string } }>(async (req, { params }) => {
   const session = await requireUser(req, "tuition", "teacher");
   const { test } = await testFor(session, params.id);
+  if (!(await resultsReleased(test))) throw new HttpError(409, "Results are available after the test is completed.");
   const attempts = await TestAttempt.find({ testId: test._id, submittedAt: { $ne: null } })
     .select("studentId score maxScore answers")
     .lean<{ studentId: Types.ObjectId; score: number; maxScore: number; answers: { index: number; selected: string | null; correct: boolean | null }[] }[]>();

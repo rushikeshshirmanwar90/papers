@@ -1,3 +1,4 @@
+import { requireTestAccess } from '@/lib/test-access';
 import { requireUser } from "@/lib/auth";
 import { attemptOut, currentAttempt, questionsFor, recordEvent, resultsReleased } from "@/lib/attempts";
 import { HttpError, readJson, route } from "@/lib/http";
@@ -13,8 +14,9 @@ export const dynamic = "force-dynamic";
 export const POST = route<{ params: { id: string } }>(async (req, { params }) => {
   const session = await requireUser(req, "student");
   const { test } = await testFor(session, params.id);
+  await requireTestAccess(test, session);
   const attempt = await currentAttempt(test, session);
   if (!attempt) throw new HttpError(400, "Start the test first.");
   const done = await recordEvent(test, attempt, await readJson(req));
-  return { attempt: attemptOut(test, done), questions: questionsFor(test, resultsReleased(test)) };
+  return { attempt: await attemptOut(test, done), questions: questionsFor(test, (await resultsReleased(test))) };
 });

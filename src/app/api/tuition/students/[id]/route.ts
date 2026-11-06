@@ -4,7 +4,6 @@ import { isOffered, notOffered, PROGRAM_INFO, programOf, STANDARDS } from "@/lib
 import { batchNames, findMember, mustFit, readProgram, readStudentBatch, studentOut } from "@/lib/tuition";
 import Batch, { type BatchDoc } from "@/models/Batch";
 import PracticeAnswer from "@/models/PracticeAnswer";
-import TestAttempt from "@/models/TestAttempt";
 import User from "@/models/User";
 
 export const dynamic = "force-dynamic";
@@ -59,11 +58,10 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   return { student: studentOut(student, await batchNames(tuitionId)) };
 });
 
-/** Takes the student out of the tuition, with their test attempts and practice answers; their account stays. */
+/** Takes the student out of the tuition, with their practice answers; their account and test attempts stay. */
 export const DELETE = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const student = await findMember(tuitionId, params.id, "student");
-  await TestAttempt.deleteMany({ studentId: student._id });
   await PracticeAnswer.deleteMany({ studentId: student._id });
   // Their account stays (they may join another tuition); they leave this one.
   await User.updateOne({ _id: student._id }, { role: null, tuitionId: null, batchId: null, program: null, track: null, standard: null });

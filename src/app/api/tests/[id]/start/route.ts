@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { attemptOut, questionsFor, resultsReleased, startAttempt } from "@/lib/attempts";
-import { route } from "@/lib/http";
+import { readJson, route } from "@/lib/http";
 import { testFor } from "@/lib/tests";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 export const POST = route<{ params: { id: string } }>(async (req, { params }) => {
   const session = await requireUser(req, "student");
   const { test } = await testFor(session, params.id);
-  const attempt = await startAttempt(test, session);
-  return { attempt: attemptOut(test, attempt), questions: questionsFor(test, resultsReleased(test)) };
+  const body = await readJson(req).catch(() => ({} as Record<string, unknown>));
+  const attempt = await startAttempt(test, session, body.visibility === true);
+  return { attempt: await attemptOut(test, attempt), questions: questionsFor(test, (await resultsReleased(test))) };
 });

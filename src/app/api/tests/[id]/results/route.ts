@@ -1,5 +1,6 @@
+import { resultsReleased } from "@/lib/attempts";
 import { requireUser } from "@/lib/auth";
-import { route } from "@/lib/http";
+import { HttpError, route } from "@/lib/http";
 import { resultsOf } from "@/lib/test-results";
 import { testFor } from "@/lib/tests";
 
@@ -14,5 +15,6 @@ export const dynamic = "force-dynamic";
 export const GET = route<{ params: { id: string } }>(async (req, { params }) => {
   const session = await requireUser(req, "tuition", "teacher");
   const { test } = await testFor(session, params.id);
+  if (!(await resultsReleased(test))) throw new HttpError(409, "Results are available after the test is completed.");
   return resultsOf(test);
 });

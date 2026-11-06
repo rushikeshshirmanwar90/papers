@@ -5,14 +5,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, before, describe, test } from "node:test";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { NextRequest } from "next/server";
 
 const BASE = "http://localhost:3000";
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
-let mongod: MongoMemoryServer;
+let mongod: MongoMemoryReplSet;
 let m: Awaited<ReturnType<typeof load>>;
 
 async function load() {
@@ -154,7 +154,7 @@ const attemptsOf = (id: string) => m.TestAttempt.find({ testId: id }).lean<{ stu
 const backdate = (id: string, who: string, ms: number) => m.TestAttempt.updateOne({ testId: id, studentId: ids[who] }, { startedAt: new Date(Date.now() - ms) });
 
 before(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const uri = mongod.getUri();
   assert.match(uri, /^mongodb:\/\/127\.0\.0\.1:\d+\//, "tests must only run against the in-memory server");
   process.env.MONGODB_URI = uri;
@@ -347,34 +347,24 @@ describe("submitting", () => {
 });
 
 describe("finalize under concurrent saves", () => {
-  test("answers saved while scoring is reading are never left out, however many times it happens", async () => {
+  test("stale finalization and concurrent saving count every committed answer", async () => {
     const id = await room();
     await start(id);
     await save(id, [{ index: 0, selected: "B" }]);
     const attempt = (await m.TestAttempt.findOne({ testId: id }))!;
     const testDoc = (await m.TestRoom.findById(id))!;
     const { finalize } = await import("@/lib/attempts");
-    // Every time scoring reads the attempt again, another save lands right after the read (6 times, more than the old 4-try limit).
-    const original = m.TestAttempt.findById;
-    const later = ["C", "D", "A", "B", "C", "D"];
-    let n = 0;
-    m.TestAttempt.findById = (async (...args: Parameters<typeof original>) => {
-      const read = await original.apply(m.TestAttempt, args);
-      if (n < later.length) await m.TestAttempt.updateOne({ testId: id }, { $set: { "answers.0.selected": later[n++] }, $inc: { rev: 1 } });
-      return read; // what scoring just read is already out of date
-    }) as unknown as typeof original;
-    try {
-      // `attempt` was read before any of those saves, so it is stale from the first try.
-      await m.TestAttempt.updateOne({ testId: id }, { $set: { "answers.0.selected": "A" }, $inc: { rev: 1 } });
-      const done = await finalize(testDoc, attempt);
-      assert.equal(done.answers[0].selected, "D", "the last saved answer is the one scored");
-      assert.equal(done.score, -1);
-    } finally {
-      m.TestAttempt.findById = original;
-    }
-    const [row] = await attemptsOf(id);
-    assert.equal(row.answers[0].selected, "D");
-    assert.equal(row.score, -1);
+    // Finalize was handed a stale document. All saves committed before its
+    // transaction must be counted; a save racing after submission is refused.
+    await save(id, [{ index: 0, selected: "A" }]);
+    const replies = await Promise.all([
+      finalize(testDoc, attempt),
+      m.answersRoute.PUT(req("PUT", `/api/tests/${id}/answers`, "s1", { answers: [{ index: 0, selected: "D" }] }), { params: { id } }),
+    ]);
+    const row = (await attemptsOf(id))[0];
+    assert.ok(row.submittedAt);
+    if (replies[1].status === 200) { assert.equal(row.answers[0].selected, "D"); assert.equal(row.score, -1); }
+    else { assert.equal(replies[1].status, 400); assert.equal(row.answers[0].selected, "A"); assert.equal(row.score, 4); }
   });
 });
 
@@ -419,7 +409,8 @@ describe("Close Now", () => {
     await start(id, "s3");
     await backdate(id, "s3", 2 * HOUR);
     const body = await view(id, "teacher");
-    assert.equal(body.results.find((r: { student: { name: string } }) => r.student.name === "s3@test.local").state, "submitted");
+    assert.deepEqual(body.results, []); // Phase 1: results stay hidden until genuine completion.
+    assert.ok((await attemptsOf(id)).find(a => String(a.studentId) === ids.s3)?.submittedAt);
   });
 });
 

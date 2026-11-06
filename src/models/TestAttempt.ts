@@ -17,6 +17,18 @@ export interface TestAttemptEvent {
   awayMs: number;
   /** True when the server judged this long enough to end the attempt. */
   ended: boolean;
+  interruptionId?: string;
+  reason?: string;
+  startedAt?: Date;
+  returnedAt?: Date | null;
+}
+
+export interface AttemptVisibility {
+  clientId: string;
+  sequence: number;
+  lastSeenAt: Date;
+  retiredClients: string[];
+  interruption?: { id: string; reason: string; startedAt: Date } | null;
 }
 
 /** A student's go at a test: started when they open it, scored when they submit. */
@@ -41,6 +53,12 @@ export interface TestAttemptDoc extends Document {
   endedReason: "violation" | null;
   /** The last few interruptions reported during the attempt (see recordEvent in lib/attempts.ts). */
   events: TestAttemptEvent[];
+  individualDeadline?: Date | null;
+  suspendedAt?: Date | null;
+  remainingMs?: number;
+  resumeVersion?: number;
+  visibility?: AttemptVisibility | null;
+  controls?: { requestId: string; action: string; teacherId: Types.ObjectId; at: Date; minutes: number; oldDeadline: Date; newDeadline: Date }[];
 }
 
 const TestAnswerSchema = new Schema<TestAnswer>(
@@ -58,6 +76,10 @@ const TestAttemptEventSchema = new Schema<TestAttemptEvent>(
     at: { type: Date, required: true },
     awayMs: { type: Number, required: true },
     ended: { type: Boolean, default: false },
+    interruptionId: String,
+    reason: String,
+    startedAt: Date,
+    returnedAt: Date,
   },
   { _id: false }
 );
@@ -79,6 +101,15 @@ const TestAttemptSchema = new Schema<TestAttemptDoc>({
   rev: { type: Number, default: 0 },
   endedReason: { type: String, enum: ["violation", null], default: null },
   events: { type: [TestAttemptEventSchema], default: [] },
+  individualDeadline: { type: Date, default: null },
+  suspendedAt: { type: Date, default: null },
+  remainingMs: { type: Number, default: 0 },
+  resumeVersion: { type: Number, default: 0 },
+  visibility: { type: new Schema<AttemptVisibility>({
+    clientId: String, sequence: Number, lastSeenAt: Date, retiredClients: [String],
+    interruption: { type: new Schema({ id: String, reason: String, startedAt: Date }, { _id: false }), default: null },
+  }, { _id: false }), default: null },
+  controls: { type: [{ _id: false, requestId: String, action: String, teacherId: Schema.Types.ObjectId, at: Date, minutes: Number, oldDeadline: Date, newDeadline: Date }], default: [] },
 });
 
 // One attempt per student per test.

@@ -36,6 +36,10 @@ export interface TestQuestion {
  */
 export interface TestRoomDoc extends Document {
   tuitionId: Types.ObjectId;
+  batchIds?: Types.ObjectId[];
+  accessVersion?: number;
+  audienceMode?: "all" | "selected";
+  roster?: { studentId: Types.ObjectId; allowed: boolean; started: boolean; request: "pending" | "approved" | "declined" | null; decidedBy?: Types.ObjectId; decidedAt?: Date }[];
   batchId: Types.ObjectId;
   teacherId: Types.ObjectId;
   title: string;
@@ -49,6 +53,11 @@ export interface TestRoomDoc extends Document {
   opensAt: Date;
   /** Closing the test early ("Close now") sets this to that moment. */
   closesAt: Date;
+  manuallyEndedAt?: Date | null;
+  controlRevision?: number;
+  /** Request-local participation data; never persisted. */
+  continuationUntil?: Date | null;
+  pendingResolution?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -83,6 +92,10 @@ const TestRoomSchema = new Schema<TestRoomDoc>(
     tuitionId: { type: Schema.Types.ObjectId, ref: "Tuition", required: true },
     batchId: { type: Schema.Types.ObjectId, ref: "Batch", required: true, index: true },
     teacherId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    batchIds: { type: [Schema.Types.ObjectId], default: undefined },
+    accessVersion: { type: Number },
+    audienceMode: { type: String, enum: ['all', 'selected'] },
+    roster: { type: [new Schema({ studentId: { type: Schema.Types.ObjectId, required: true }, allowed: Boolean, started: { type: Boolean, default: false }, request: { type: String, enum: ['pending', 'approved', 'declined', null], default: null }, decidedBy: Schema.Types.ObjectId, decidedAt: Date }, { _id: false })], default: undefined },
     title: { type: String, required: true, trim: true },
     subject: { type: String, default: "" },
     standard: { type: String, default: "" },
@@ -92,11 +105,14 @@ const TestRoomSchema = new Schema<TestRoomDoc>(
     durationMinutes: { type: Number, required: true, min: 1, max: 600 },
     opensAt: { type: Date, required: true },
     closesAt: { type: Date, required: true },
+    manuallyEndedAt: { type: Date, default: null },
+    controlRevision: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
 TestRoomSchema.index({ tuitionId: 1, createdAt: -1 });
+TestRoomSchema.index({ tuitionId: 1, batchIds: 1, opensAt: -1 });
 // Test lists: a tuition's tests (or some batches') by when they open.
 TestRoomSchema.index({ tuitionId: 1, batchId: 1, opensAt: -1 });
 

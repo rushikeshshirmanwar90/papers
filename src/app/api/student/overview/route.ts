@@ -1,3 +1,5 @@
+import { releasedOnly } from "@/lib/test-completion";
+import { accessOf } from '@/lib/test-access';
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { route } from "@/lib/http";
@@ -34,7 +36,7 @@ export const GET = route(async (req) => {
     TestAttempt.find({ studentId: user._id, submittedAt: { $ne: null } }).sort({ submittedAt: -1 }).limit(20).lean<{ testId: Types.ObjectId; score: number; maxScore: number; submittedAt: Date }[]>(),
   ]);
   // Marks only show once the test has closed.
-  const closedTests = await TestRoom.find({ _id: { $in: attempts.map((a) => a.testId) }, closesAt: { $lte: new Date() } }).select("title").lean<{ _id: Types.ObjectId; title: string }[]>();
+  const closedTests = await releasedOnly(await TestRoom.find({ _id: { $in: attempts.map((a) => a.testId) }, closesAt: { $lte: new Date() } }).select("title").lean<{ _id: Types.ObjectId; title: string }[]>());
   const lastAttempt = attempts.find((a) => closedTests.some((t) => String(t._id) === String(a.testId)));
   const myStats = (stats.get(String(user._id)) ?? []).filter((s) => s.level !== "not-enough");
   const lastTest = lastAttempt ? closedTests.find((t) => String(t._id) === String(lastAttempt.testId)) : null;
@@ -63,6 +65,8 @@ export const GET = route(async (req) => {
     return { subjects, batch: null, today: [], week: [], recent: [], openTests: [], insight, enrollmentStatus, pendingBatchName };
   }
 
+  const continuing = await TestAttempt.distinct('testId', { studentId: user._id, tuitionId: session.tuitionId, submittedAt: null,
+    $or: [{ suspendedAt: { $ne: null } }, { individualDeadline: { $gt: new Date() } }] });
   const { day } = todayInIndia();
   const [names, count, coverage, classes, recent, open] = await Promise.all([
     teacherNames(session.tuitionId),
@@ -70,7 +74,7 @@ export const GET = route(async (req) => {
     coverageFor([batch]),
     TimetableEntry.find({ batchId: batch._id }).sort({ day: 1, start: 1 }) as Promise<TimetableEntryDoc[]>,
     SyllabusProgress.find({ batchId: batch._id }).sort({ coveredOn: -1, createdAt: -1 }).limit(8).lean<{ _id: Types.ObjectId; subject: string; chapter: string; topic: string; coveredOn: Date }[]>(),
-    TestRoom.find({ batchId: batch._id, opensAt: { $lte: new Date() }, $or: [{ closesAt: null }, { closesAt: { $gt: new Date() } }] })
+    TestRoom.find({ tuitionId: session.tuitionId, $and: [{ $or: [{ batchId: batch._id }, { batchIds: batch._id }, { roster: { $elemMatch: { studentId: user._id, allowed: true } } }] }], opensAt: { $lte: new Date() }, $or: [{ closesAt: null }, { closesAt: { $gt: new Date() } }, { _id: { $in: continuing } }] })
       .select("-questions.explanation")
       .sort({ opensAt: -1 }) as Promise<TestRoomDoc[]>,
   ]);
@@ -86,7 +90,7 @@ export const GET = route(async (req) => {
     today: week.filter((c) => c.day === day),
     week,
     recent: recent.map((r) => ({ id: String(r._id), subject: r.subject, chapter: r.chapter, topic: r.topic, coveredOn: r.coveredOn })),
-    openTests: await testSummaries(pending),
+    openTests: (await testSummaries((await Promise.all(pending.map(async t => (await accessOf(t, session)).allowed ? t : null))).filter((t): t is TestRoomDoc => !!t))).filter(t => t.status === "open"),
     insight,
   };
 });

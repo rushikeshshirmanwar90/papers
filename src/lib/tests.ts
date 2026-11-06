@@ -1,3 +1,5 @@
+import { hydrateCompletion } from "@/lib/test-completion";
+import { hasManagedAccess, accessOf, batchesOfTest } from '@/lib/test-access';
 import { Types } from "mongoose";
 import type { Session } from "@/lib/auth";
 import { HttpError, badRequest, isObjectId, notFound } from "@/lib/http";
@@ -16,8 +18,10 @@ const MAX_TEXT = 20000;
  */
 export type TestStatus = "scheduled" | "open" | "closed";
 
-export function statusOf(test: Pick<TestRoomDoc, "opensAt" | "closesAt">, now = Date.now()): TestStatus {
+export function statusOf(test: Pick<TestRoomDoc, "opensAt" | "closesAt"> & Partial<Pick<TestRoomDoc, "pendingResolution" | "manuallyEndedAt">>, now = Date.now()): TestStatus {
   if (test.opensAt.getTime() > now) return "scheduled";
+  if (test.manuallyEndedAt) return "closed";
+  if (test.pendingResolution) return "open";
   if (test.closesAt && test.closesAt.getTime() <= now) return "closed";
   return "open";
 }
@@ -126,10 +130,14 @@ export async function testFor(session: Session, id: unknown) {
   if (!isObjectId(id)) throw notFound("This test");
   const test = (await TestRoom.findOne({ _id: id, tuitionId: session.tuitionId })) as TestRoomDoc | null;
   if (!test) throw notFound("This test");
-  await batchFor(session, test.batchId).catch(() => {
-    throw notFound("This test");
-  });
+  if (session.role === 'student') {
+    if (!(await accessOf(test, session)).visible) throw notFound('This test');
+  } else if (session.role === 'teacher') {
+    const visible = await Promise.all(batchesOfTest(test).map(id => batchFor(session, id).then(() => true, () => false)));
+    if (!visible.some(Boolean)) throw notFound('This test');
+  }
   const canEdit = session.role === "tuition" || (session.role === "teacher" && String(test.teacherId) === session.userId);
+  await hydrateCompletion(test);
   return { test, canEdit };
 }
 
@@ -143,7 +151,7 @@ export const maxScoreOf = (test: Pick<TestRoomDoc, "questions" | "marksPerQuesti
 export async function testSummaries(tests: TestRoomDoc[]) {
   const ids = tests.map((t) => t._id);
   const [batches, teachers, stats, studentCounts] = await Promise.all([
-    Batch.find({ _id: { $in: tests.map((t) => t.batchId) } }).select("name").lean<{ _id: Types.ObjectId; name: string }[]>(),
+    Batch.find({ _id: { $in: tests.flatMap(batchesOfTest) } }).select("name").lean<{ _id: Types.ObjectId; name: string }[]>(),
     User.find({ _id: { $in: tests.map((t) => t.teacherId) } }).select("name").lean<{ _id: Types.ObjectId; name: string }[]>(),
     TestAttempt.aggregate<{ _id: Types.ObjectId; started: number; submitted: number; avg: number | null }>([
       { $match: { testId: { $in: ids } } },
@@ -161,11 +169,17 @@ export async function testSummaries(tests: TestRoomDoc[]) {
       { $group: { _id: "$batchId", n: { $sum: 1 } } },
     ]),
   ]);
+  // Freeze the list clock before completion checks. Crossing closesAt while
+  // loading aggregates cannot release a stale average ahead of an extension.
   const now = Date.now();
+  await Promise.all(tests.map(hydrateCompletion));
   return tests.map((t) => {
     const s = stats.find((x) => String(x._id) === String(t._id));
     return {
       id: String(t._id),
+      accessVersion: hasManagedAccess(t) ? 1 : undefined,
+      audienceMode: t.audienceMode,
+      batches: batchesOfTest(t).map(id => ({ id: String(id), name: batches.find(b => String(b._id) === String(id))?.name ?? 'Former batch' })),
       title: t.title,
       batch: { id: String(t.batchId), name: batches.find((b) => String(b._id) === String(t.batchId))?.name ?? "" },
       teacher: { id: String(t.teacherId), name: teachers.find((u) => String(u._id) === String(t.teacherId))?.name ?? "" },
@@ -180,12 +194,13 @@ export async function testSummaries(tests: TestRoomDoc[]) {
       closesAt: t.closesAt,
       lastStartAt: lastStartOf(t),
       status: statusOf(t, now),
+      pendingResolution: !!t.pendingResolution,
       createdAt: t.createdAt,
       /** Students who have opened it, finished or not: once any have, it can't be edited. */
       started: s?.started ?? 0,
       submitted: s?.submitted ?? 0,
-      batchStudents: studentCounts.find((c) => String(c._id) === String(t.batchId))?.n ?? 0,
-      averageScore: s?.avg != null ? Math.round(s.avg * 10) / 10 : null,
+      batchStudents: hasManagedAccess(t) ? (t.roster ?? []).filter(r => r.allowed).length : studentCounts.find((c) => String(c._id) === String(t.batchId))?.n ?? 0,
+      averageScore: statusOf(t, now) === "closed" && s?.avg != null ? Math.round(s.avg * 10) / 10 : null,
     };
   });
 }

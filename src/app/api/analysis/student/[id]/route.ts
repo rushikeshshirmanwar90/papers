@@ -1,3 +1,4 @@
+import { releasedOnly } from "@/lib/test-completion";
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { isObjectId, notFound, route } from "@/lib/http";
@@ -28,9 +29,10 @@ export const GET = route<{ params: { id: string } }>(async (req, { params }) => 
   }
 
   const id = student._id as Types.ObjectId;
+  const released = await releasedOnly(await TestRoom.find({ tuitionId: session.tuitionId, closesAt: { $lte: new Date() } }).select("_id").lean<{ _id: Types.ObjectId }[]>());
   const [statsMap, attempts, batch] = await Promise.all([
     topicStatsByStudent([id]),
-    TestAttempt.find({ studentId: id, submittedAt: { $ne: null } })
+    TestAttempt.find({ testId: { $in: released.map(t => t._id) }, studentId: id, submittedAt: { $ne: null } })
       .sort({ submittedAt: -1 })
       .lean<{ testId: Types.ObjectId; score: number; maxScore: number; correctCount: number; wrongCount: number; skippedCount: number; submittedAt: Date }[]>(),
     student.batchId ? Batch.findById(student.batchId).select("name").lean<{ name: string }>() : null,

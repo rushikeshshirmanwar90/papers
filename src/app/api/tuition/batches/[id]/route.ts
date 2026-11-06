@@ -6,8 +6,6 @@ import { EMPTY_SUMMARY, timetableSummaries } from "@/lib/timetable";
 import { asDuplicateName, batchNames, batchOut, findBatch, mustHaveUniqueName, mustKeepStudentsFitting, readBatch, studentOut, teacherNames } from "@/lib/tuition";
 import Announcement from "@/models/Announcement";
 import SyllabusProgress from "@/models/SyllabusProgress";
-import TestAttempt from "@/models/TestAttempt";
-import TestRoom from "@/models/TestRoom";
 import TimetableEntry from "@/models/TimetableEntry";
 import User, { type UserDoc } from "@/models/User";
 
@@ -62,7 +60,7 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   return { batch: batchOut(batch, await teacherNames(tuitionId), count, classes.get(String(batch._id)) ?? EMPTY_SUMMARY) };
 });
 
-/** Deletes the batch with its timetable, tests and syllabus progress. Its students stay enrolled, without a batch. */
+/** Deletes the batch with its timetable and syllabus progress; test history is retained. Its students stay enrolled, without a batch. */
 export const DELETE = route<Ctx>(async (req, { params }) => {
   const { tuitionId } = await requireUser(req, "tuition");
   const batch = await findBatch(tuitionId, params.id);
@@ -70,8 +68,6 @@ export const DELETE = route<Ctx>(async (req, { params }) => {
     User.updateMany({ tuitionId, batchId: batch._id }, { batchId: null }),
     SyllabusProgress.deleteMany({ batchId: batch._id }),
     TimetableEntry.deleteMany({ batchId: batch._id }),
-    TestRoom.deleteMany({ batchId: batch._id }),
-    TestAttempt.deleteMany({ batchId: batch._id }),
     // Notices to this batch alone go; others just stop listing it (an empty
     // list would mean "every batch").
     Announcement.deleteMany({ tuitionId, batchIds: { $size: 1, $all: [batch._id] } }),

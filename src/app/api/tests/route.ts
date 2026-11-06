@@ -1,7 +1,8 @@
+import { hasManagedAccess, accessOf, audienceBatches, rosterStudents } from '@/lib/test-access';
 import { requireUser } from "@/lib/auth";
-import { badRequest, isObjectId, readJson, route, text } from "@/lib/http";
+import { badRequest, HttpError, isObjectId, readJson, route, text } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
-import { membersOf, pushToUsers } from "@/lib/push";
+import { pushToUsers } from "@/lib/push";
 import { batchFor, mustTeach } from "@/lib/teaching";
 import { SUBJECTS, programOf, questionBankOf, type SchoolSubject } from "@/lib/school";
 import { readDuration, readMarking, readQuestions, readWhen, resolveSchedule, testSummaries } from "@/lib/tests";
@@ -24,9 +25,13 @@ export const GET = route(async (req) => {
   const session = await requireUser(req);
   const ids = await batchIdsOf(session);
   const filter: Record<string, unknown> = { tuitionId: session.tuitionId };
-  if (ids !== "all") filter.batchId = { $in: ids };
+  if (ids !== 'all') filter.$or = [{ batchId: { $in: ids } }, { batchIds: { $in: ids } }];
+  if (session.role === 'student') {
+    const mine = await TestAttempt.distinct('testId', { tuitionId: session.tuitionId, studentId: session.user._id });
+    filter.$or = [{ batchId: { $in: session.user.batchId ? [session.user.batchId] : [] } }, { batchIds: { $in: session.user.batchId ? [session.user.batchId] : [] } }, { _id: { $in: mine } }];
+  }
   const only = req.nextUrl.searchParams.get("batchId");
-  if (isObjectId(only)) filter.batchId = ids === "all" || ids.some((id) => String(id) === only) ? only : { $in: [] };
+  if (isObjectId(only)) filter.$and = [ids === 'all' || ids.some(id => String(id) === only) ? { $or: [{ batchId: only }, { batchIds: only }] } : { _id: { $in: [] } }];
   const upcoming = req.nextUrl.searchParams.get("upcoming") === "1";
   if (session.role === "student" && !upcoming) filter.opensAt = { $lte: new Date() };
   const tests = (await TestRoom.find(filter).select("-questions.explanation").sort({ opensAt: -1 }).limit(200)) as TestRoomDoc[];
@@ -38,10 +43,11 @@ export const GET = route(async (req) => {
     .select("testId score submittedAt")
     .lean<{ testId: Types.ObjectId; score: number; submittedAt: Date | null }[]>();
   return {
-    tests: summaries.map((t) => {
+    tests: await Promise.all(summaries.map(async (t, index) => {
+      const access = await accessOf(tests[index], session);
       const a = attempts.find((x) => String(x.testId) === t.id);
-      return { ...t, mine: a ? { state: a.submittedAt ? "submitted" : "in-progress", score: a.submittedAt && t.status === "closed" ? a.score : null } : null };
-    }),
+      return { ...t, ...(hasManagedAccess(tests[index]) && !access.allowed ? { averageScore: null, started: 0, submitted: 0, batchStudents: 0 } : {}), access, mine: a ? { state: a.submittedAt ? "submitted" : "in-progress", score: a.submittedAt && t.status === "closed" ? a.score : null } : null };
+    })),
   };
 });
 
@@ -55,13 +61,29 @@ export const GET = route(async (req) => {
 export const POST = route(async (req) => {
   const session = await requireUser(req, "tuition", "teacher");
   const body = await readJson(req);
-  const batch = await batchFor(session, body.batchId);
+  // Next dev can retain a Mongoose model compiled before audience fields existed.
+  // Refuse publication instead of silently stripping permissions and creating a legacy test.
+  if (!TestRoom.schema.path('accessVersion') || !TestRoom.schema.path('roster') || !TestRoom.schema.path('audienceMode')) throw new HttpError(503, 'Restart the backend to load test access management before publishing this test.');
+  if (body.audienceMode === undefined && Array.isArray(body.studentIds) && body.studentIds.length) throw badRequest('Choose Selected students only when selecting allowed students.');
+  const batch = await batchFor(session, Array.isArray(body.batchIds) ? body.batchIds[0] : body.batchId);
   // Only JEE and NEET have questions; other programs never borrow theirs.
   if (!questionBankOf(programOf(batch))) throw badRequest(`There is no question bank for ${batch.name}'s program yet, so a test can't be set for it.`);
   const subject = text(body, "subject", { required: true, max: 40, label: "a subject" })!;
   if (!(SUBJECTS as readonly string[]).includes(subject)) throw badRequest("Pick one of the batch's subjects.");
   mustTeach(session, batch, subject as SchoolSubject);
 
+  const batches = await audienceBatches(session, body.batchIds ?? [body.batchId], subject);
+  const candidates = await rosterStudents(session.tuitionId, batches.map(b => b._id));
+  if (body.audienceMode !== undefined && !['all', 'selected'].includes(String(body.audienceMode))) throw badRequest('Choose a valid audience mode.');
+  const audienceMode = body.audienceMode === 'selected' ? 'selected' : 'all';
+  const readIds = (value: unknown) => {
+    if (value === undefined) return new Set<string>();
+    if (!Array.isArray(value) || value.some(id => !isObjectId(id) || !candidates.some(s => String(s._id) === id))) throw badRequest('Select eligible students from the chosen batches.');
+    return new Set(value as string[]);
+  };
+  const selected = readIds(body.studentIds), excluded = readIds(body.excludedStudentIds);
+  if (audienceMode === 'selected' && !selected.size) throw badRequest('Select at least one student.');
+  const roster = candidates.map(s => ({ studentId: s._id, allowed: audienceMode === 'selected' ? selected.has(String(s._id)) : !excluded.has(String(s._id)), started: false, request: null }));
   const durationMinutes = readDuration(body.durationMinutes, 60);
   const { opensAt, closesAt } = resolveSchedule({
     startNow: body.startNow === true,
@@ -72,6 +94,7 @@ export const POST = route(async (req) => {
 
   const test = (await TestRoom.create({
     tuitionId: session.tuitionId,
+    accessVersion: 1, batchIds: batches.map(b => b._id), audienceMode, roster,
     batchId: batch._id,
     teacherId: session.user._id,
     title: text(body, "title", { required: true, max: 120, label: "a test name" }),
@@ -85,7 +108,7 @@ export const POST = route(async (req) => {
   })) as TestRoomDoc;
 
   const opensNow = test.opensAt.getTime() <= Date.now() + 60 * 1000;
-  await pushToUsers(await membersOf(session.tuitionId, [batch._id], ["student"]), {
+  await pushToUsers(roster.filter(r => r.allowed).map(r => r.studentId as Types.ObjectId), {
     title: opensNow ? `New test: ${test.title}` : `Test coming up: ${test.title}`,
     body: opensNow
       ? `${test.questions.length} questions · ${test.durationMinutes} min. Open it from your Tests tab.`
