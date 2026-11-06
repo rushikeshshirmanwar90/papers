@@ -1,5 +1,6 @@
+import { resultsReleased } from "@/lib/attempts";
 import { requireUser } from "@/lib/auth";
-import { isObjectId, notFound, route } from "@/lib/http";
+import { HttpError, isObjectId, notFound, route } from "@/lib/http";
 import { studentResultOf } from "@/lib/test-results";
 import { testFor } from "@/lib/tests";
 
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 export const GET = route<{ params: { id: string; studentId: string } }>(async (req, { params }) => {
   const session = await requireUser(req, "tuition", "teacher");
   const { test } = await testFor(session, params.id);
+  if (!(await resultsReleased(test))) throw new HttpError(409, "Results are available after the test is completed.");
   if (!isObjectId(params.studentId)) throw notFound("This student's result");
   return studentResultOf(test, params.studentId);
 });

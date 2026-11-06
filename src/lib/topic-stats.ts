@@ -1,3 +1,4 @@
+import { releasedOnly } from "@/lib/test-completion";
 import type { Types } from "mongoose";
 import PracticeAnswer from "@/models/PracticeAnswer";
 import TestAttempt from "@/models/TestAttempt";
@@ -69,9 +70,9 @@ export async function topicStatsByStudent(
     .select("studentId testId answers")
     .lean<{ studentId: Types.ObjectId; testId: Types.ObjectId; answers: { index: number; correct: boolean | null }[] }[]>();
 
-  const tests = await TestRoom.find({ _id: { $in: [...new Set(attempts.map((a) => String(a.testId)))] } })
+  const tests = await releasedOnly(await TestRoom.find({ closesAt: { $lte: new Date() }, _id: { $in: [...new Set(attempts.map((a) => String(a.testId)))] } })
     .select("questions.subject questions.chapter questions.topic")
-    .lean<{ _id: Types.ObjectId; questions: { subject: string; chapter: string; topic: string }[] }[]>();
+    .lean<{ _id: Types.ObjectId; questions: { subject: string; chapter: string; topic: string }[] }[]>());
   const questionsOf = new Map(tests.map((t) => [String(t._id), t.questions]));
 
   const tallies = new Map<string, Tally>();

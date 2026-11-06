@@ -44,7 +44,7 @@ export interface AttemptRow {
   answers: Answer[];
 }
 
-const ATTEMPT_FIELDS = "studentId score maxScore correctCount wrongCount skippedCount timeTakenSeconds startedAt submittedAt endedReason answers";
+const ATTEMPT_FIELDS = "studentId score maxScore correctCount wrongCount skippedCount timeTakenSeconds startedAt submittedAt endedReason answers individualDeadline suspendedAt";
 
 type TestForResults = Pick<TestRoomDoc, "questions" | "marksPerQuestion" | "negativeMarks" | "durationMinutes" | "closesAt">;
 
@@ -338,7 +338,7 @@ export function buildResults(
  */
 export async function resultsOf(test: TestRoomDoc) {
   const monitor = await monitorTest(test);
-  const attempts = await TestAttempt.find({ testId: test._id, tuitionId: test.tuitionId, batchId: test.batchId }).select(ATTEMPT_FIELDS).lean<AttemptRow[]>();
+  const attempts = await TestAttempt.find({ testId: test._id, tuitionId: test.tuitionId }).select(ATTEMPT_FIELDS).lean<AttemptRow[]>();
   const listed = new Set(monitor.students.map((r) => r.student.id));
   const former = attempts.filter((a) => a.submittedAt && !listed.has(String(a.studentId)));
   if (former.length) {

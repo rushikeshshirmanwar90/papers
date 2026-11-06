@@ -1,3 +1,5 @@
+import { endTest } from "@/lib/attempt-control";
+import { accessOf, hasManagedAccess } from '@/lib/test-access';
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { HttpError, badRequest, readJson, route, text } from "@/lib/http";
@@ -23,13 +25,16 @@ export const GET = route<Ctx>(async (req, { params }) => {
   // A student sees the test, their attempt, and the questions: without
   // answers until the test has closed (submitting early doesn't release them).
   if (session.role === "student") {
+    const access = await accessOf(test, session);
+    if (!access.allowed || (hasManagedAccess(test) && statusOf(test) === 'scheduled')) return { test: { ...(await testSummaries([test]))[0], averageScore: null, started: 0, submitted: 0, batchStudents: 0 }, access, attempt: null, questions: [], analytics: null };
     if (statusOf(test) === "scheduled") throw new HttpError(404, "This test was not found.");
     const attempt = await currentAttempt(test, session);
     // Closed: answers for everyone; anyone still mid-test was scored by currentAttempt.
-    const reveal = resultsReleased(test);
+    const reveal = (await resultsReleased(test));
     return {
       test: (await testSummaries([test]))[0],
-      attempt: attemptOut(test, attempt),
+      access,
+      attempt: await attemptOut(test, attempt),
       // Before starting, only the summary; the questions come with the attempt.
       questions: attempt || reveal ? questionsFor(test, reveal) : [],
       // Own rank and topic performance: only for a submitted attempt, and only once the test has closed.
@@ -40,7 +45,7 @@ export const GET = route<Ctx>(async (req, { params }) => {
   // Attempts whose time ran out while nobody was looking are scored before the results are listed.
   await finalizeExpired(test);
   const [students, attempts] = await Promise.all([
-    User.find({ tuitionId: session.tuitionId, role: "student", batchId: test.batchId }).select("name").sort({ name: 1 }).lean<{ _id: Types.ObjectId; name: string }[]>(),
+    User.find({ tuitionId: session.tuitionId, role: "student", ...(hasManagedAccess(test) ? { _id: { $in: (test.roster ?? []).map(r => r.studentId) } } : { batchId: test.batchId }) }).select("name").sort({ name: 1 }).lean<{ _id: Types.ObjectId; name: string }[]>(),
     TestAttempt.find({ testId: test._id }).lean<{ studentId: Types.ObjectId; score: number; correctCount: number; wrongCount: number; skippedCount: number; submittedAt: Date | null; timeTakenSeconds: number }[]>(),
   ]);
   const results = students.map((s) => {
@@ -62,8 +67,8 @@ export const GET = route<Ctx>(async (req, { params }) => {
   return {
     test: (await testSummaries([test]))[0],
     canEdit,
-    questions: test.questions,
-    results,
+    questions: statusOf(test) === "scheduled" ? test.questions : questionsFor(test, await resultsReleased(test)),
+    results: (await resultsReleased(test)) ? results : [],
   };
 });
 
@@ -83,11 +88,8 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   if (body.closeNow === true) {
     if (status === "scheduled") throw badRequest("This test hasn't opened yet. Cancel it instead.");
     if (status === "closed") throw badRequest("This test has already closed.");
-    test.closesAt = new Date();
-    await test.save();
-    // New starts are refused from now on; students still mid-test are scored with what they saved.
-    await finalizeExpired(test);
-    return { test: (await testSummaries([test]))[0], maxScore: maxScoreOf(test) };
+    const ended = await endTest(test);
+    return { test: (await testSummaries([ended]))[0], maxScore: maxScoreOf(ended) };
   }
 
   if (status !== "scheduled") throw badRequest("This test has already opened, so it can't be edited. You can close it early.");
