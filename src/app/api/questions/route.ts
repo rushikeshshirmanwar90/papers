@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import Question, { NOT_A_BANK_COPY } from "@/models/Question";
 import { buildFilter } from "@/lib/queryFilters";
+import { examFilterOf } from "@/lib/examFilter";
+import { HttpError } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Year must be a four-digit year" }, { status: 400 });
     }
 
+    // ?exam=JEE|NEET keeps only that exam's questions (lib/examBank.ts).
+    let exam: ReturnType<typeof examFilterOf>;
+    try {
+      exam = examFilterOf(searchParams);
+    } catch (error) {
+      if (error instanceof HttpError) return NextResponse.json({ error: error.message }, { status: error.status });
+      throw error;
+    }
+    // Conditions on `source` from the exam and from the year both apply.
+    const and: Record<string, unknown>[] = exam ? [...exam.conditions] : [];
+    if (exam?.subjects) filter.subject = { $in: exam.subjects };
+
     if (search) {
       const searchPattern = new RegExp(escapeRegex(search), "i");
       filter.$or = [
@@ -40,8 +54,9 @@ export async function GET(req: NextRequest) {
       ];
     }
     if (year) {
-      filter.source = { $regex: new RegExp(`\\b${year}\\b`, "i") };
+      and.push({ source: { $regex: new RegExp(`\\b${year}\\b`, "i") } });
     }
+    if (and.length) filter.$and = and;
 
     const paperId = searchParams.get("paperId");
     if (paperId) {

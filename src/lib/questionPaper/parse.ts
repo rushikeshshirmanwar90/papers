@@ -1,5 +1,7 @@
 import { DEFAULT_PAPER_TITLE, type PaperQuestion, type QuestionPaper } from "./html";
 import { normalizeSlideSettings } from "../smartSlides/layout";
+import { normalizePaperStyle } from "./style";
+import { cleanWatermark } from "./watermark";
 
 // Checks a request body and turns it into a QuestionPaper, with limits so one
 // request can't ask for an unbounded amount of work.
@@ -99,6 +101,10 @@ export function parsePaper(body: unknown): QuestionPaper {
     solutions,
     strictLayout: body.strictLayout === true,
     questions: questions.map(question),
+    // Exam papers only: a Smart PDF never carries a watermark.
+    watermark: smart ? "" : cleanWatermark(text(body.watermark, "watermark", 500)),
+    // Exam papers only, and only values from fixed lists: a Smart PDF has its own settings.
+    ...(smart ? {} : { style: normalizePaperStyle(body.style) }),
     ...(smart ? { format: "smart" as const, slides: normalizeSlideSettings(body.slides) } : {}),
   };
 }

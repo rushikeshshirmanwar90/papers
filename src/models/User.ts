@@ -7,6 +7,9 @@ import { PROGRAMS, ROLES, STANDARDS, SUBJECTS, TRACKS, type Program, type Role, 
  * (no role, no tuition). Role-specific details sit on the
  * same document (subjects for a teacher; track, class and batch for a student).
  */
+export type AccountStatus = "invited" | "active";
+export type InvitationStatus = "pending_send" | "sent" | "send_failed";
+
 export interface UserDoc extends Document {
   email: string;
   passwordHash: string;
@@ -20,6 +23,13 @@ export interface UserDoc extends Document {
   emailVerified: boolean;
   /** Raised on a password change or reset, which signs out every device. */
   tokenVersion: number;
+  /** Admin-created students must pick their own password on first login. */
+  mustChangePassword: boolean;
+  /** "invited" until the student completes their mandatory password change; "active" after. Defaults to "active" for self-registered and existing users. */
+  accountStatus: AccountStatus;
+  /** Tracks whether the welcome email was accepted by the mail provider. */
+  invitationStatus?: InvitationStatus;
+  invitedAt?: Date;
   failedLogins: number;
   lockedUntil: Date | null;
   /** Wrong joining codes in a row; too many lock code entry for a while. */
@@ -64,6 +74,10 @@ const UserSchema = new Schema<UserDoc>(
     active: { type: Boolean, default: true },
     emailVerified: { type: Boolean, default: false },
     tokenVersion: { type: Number, default: 0 },
+    mustChangePassword: { type: Boolean, default: false },
+    accountStatus: { type: String, enum: ["invited", "active"], default: "active" },
+    invitationStatus: { type: String, enum: ["pending_send", "sent", "send_failed"] },
+    invitedAt: { type: Date },
     failedLogins: { type: Number, default: 0, select: false },
     lockedUntil: { type: Date, default: null, select: false },
     joinCodeFailures: { type: Number, default: 0, select: false },

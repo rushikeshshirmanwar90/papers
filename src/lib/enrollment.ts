@@ -10,6 +10,10 @@ import User from "@/models/User";
 // Deciding students' requests to join a batch. Approving changes the same
 // membership every Student API reads (the user's tuition, role and batch), so
 // the student gets the normal app at once; the request's status follows.
+//
+// Admin-created enrollment requests work differently from join-code ones:
+// the student already has tuitionId and role set, so approval only needs to
+// set/confirm the batch.
 
 /**
  * Approves or rejects one pending teacher request of this tuition. Approving
@@ -134,5 +138,101 @@ export async function decideEnrollments(tuitionId: string, adminName: string, id
       data: { tab: "home", kind: "joined" },
     });
   }
+  return result;
+}
+
+/**
+ * Decides a single admin-created enrollment request. Unlike join-code requests,
+ * the student already has tuitionId and role="student" set. Approval assigns
+ * (or confirms) the batch; rejection/dismiss cancels the request without
+ * touching the student's account.
+ *
+ * When `assignBatchId` is given, it overrides the request's batchId (used for
+ * batch-assignment-pending requests where the admin picks the batch at approval time).
+ */
+export async function decideAdminEnrollment(
+  tuitionId: string,
+  adminName: string,
+  requestId: string,
+  action: "approve" | "reject",
+  assignBatchId?: string
+): Promise<EnrollmentResult> {
+  const request = (await JoinRequest.findOne({
+    _id: requestId,
+    tuitionId,
+    status: "pending",
+    role: "student",
+    source: "admin_created",
+  })) as JoinRequestDoc | null;
+  if (!request) throw new HttpError(404, "This request is no longer waiting. Refresh and try again.");
+
+  const result: EnrollmentResult = { approved: 0, rejected: 0, failed: [] };
+  const user = await User.findById(request.userId).select("name tuitionId role batchId");
+  const name = user?.name ?? "A student";
+
+  // Claim first to prevent double-decide.
+  const claimed = await JoinRequest.findOneAndUpdate(
+    { _id: request._id, tuitionId, status: "pending" },
+    { status: action === "approve" ? "accepted" : "rejected", acceptedAs: action === "approve" ? "student" : null, decidedAt: new Date() }
+  );
+  if (!claimed) {
+    result.failed.push({ id: requestId, name, reason: "Already decided." });
+    return result;
+  }
+
+  if (action === "reject") {
+    result.rejected = 1;
+    return result;
+  }
+
+  // Determine the batch to enroll in.
+  const batchIdToUse = assignBatchId ?? (request.batchId ? String(request.batchId) : null);
+  if (!batchIdToUse) {
+    // Can't approve without a batch — hand it back.
+    await JoinRequest.updateOne({ _id: request._id }, { status: "pending", acceptedAs: null, decidedAt: null });
+    result.failed.push({ id: requestId, name, reason: "Select a batch first." });
+    return result;
+  }
+
+  const batch = (await Batch.findOne({ _id: batchIdToUse, tuitionId })) as BatchDoc | null;
+  if (!batch || !batch.active) {
+    await JoinRequest.updateOne({ _id: request._id }, { status: "pending", acceptedAs: null, decidedAt: null });
+    result.failed.push({ id: requestId, name, reason: "The batch is no longer available." });
+    return result;
+  }
+
+  const problem = inviteProblem(batch);
+  if (problem) {
+    await JoinRequest.updateOne({ _id: request._id }, { status: "pending", acceptedAs: null, decidedAt: null });
+    result.failed.push({ id: requestId, name, reason: problem });
+    return result;
+  }
+
+  const program = programOf(batch);
+  if (!program) {
+    await JoinRequest.updateOne({ _id: request._id }, { status: "pending", acceptedAs: null, decidedAt: null });
+    result.failed.push({ id: requestId, name, reason: "The batch has no program set." });
+    return result;
+  }
+
+  // The student already has tuitionId and role; just set/update the batch and program.
+  try {
+    await User.updateOne(
+      { _id: request.userId, tuitionId, role: "student" },
+      { program, track: PROGRAM_INFO[program].track, standard: batch.standard, batchId: batch._id }
+    );
+  } catch (error) {
+    console.error("[enrollment] couldn't update the student:", error);
+    await JoinRequest.updateOne({ _id: request._id, status: "accepted" }, { status: "pending", acceptedAs: null, decidedAt: null });
+    result.failed.push({ id: requestId, name, reason: "Couldn't update their account. Try again." });
+    return result;
+  }
+
+  result.approved = 1;
+  await pushToUsers([request.userId], {
+    title: `Welcome to ${batch.name}`,
+    body: `${adminName} enrolled you in ${batch.name}. Open the app to start.`,
+    data: { tab: "home", kind: "joined" },
+  });
   return result;
 }

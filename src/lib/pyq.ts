@@ -1,3 +1,4 @@
+import { EXAMS } from "@/lib/examBank";
 import { badRequest, oneOf } from "@/lib/http";
 import {
   PROGRAM_INFO,
@@ -26,8 +27,8 @@ const YEAR = "(19|20)\\d{2}";
 
 /** Each bank: the exams that count as its past papers, and its subjects. */
 const BANKS: Record<QuestionBank, { exams: string; subjects: readonly SchoolSubject[] }> = {
-  NEET: { exams: "NEET|AIPMT|AIIMS|JIPMER", subjects: PROGRAM_INFO.NEET.allowed },
-  JEE: { exams: "JEE|AIEEE|IIT|BITSAT", subjects: PROGRAM_INFO.JEE.allowed },
+  NEET: { exams: EXAMS.NEET.sources, subjects: PROGRAM_INFO.NEET.allowed },
+  JEE: { exams: EXAMS.JEE.sources, subjects: PROGRAM_INFO.JEE.allowed },
 };
 
 /** The Mongo filter for a bank's PYQs in some bank subjects. */

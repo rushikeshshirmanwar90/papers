@@ -126,6 +126,9 @@ export async function requireUser(req: NextRequest, ...roles: Role[]): Promise<S
   const account = await requireAccount(req);
   if (!account.role || !account.tuitionId) throw new HttpError(403, "Join a tuition first.");
   if (roles.length && !roles.includes(account.role)) throw new HttpError(403, "Your account can't do this.");
+  if (account.user.mustChangePassword && account.role === "student") {
+    throw new HttpError(403, "Change your password first.");
+  }
   return account as Session;
 }
 
@@ -147,5 +150,6 @@ export async function publicUser(user: UserDoc) {
     standard: user.standard ?? null,
     batchId: user.batchId ? String(user.batchId) : null,
     parentPhone: user.parentPhone ?? "",
+    mustChangePassword: user.mustChangePassword ?? false,
   };
 }

@@ -6,6 +6,8 @@ import { PaperRequestError, parsePaper } from "@/lib/questionPaper/parse";
 import { RenderBusyError, RenderTimeoutError, renderPaper, renderSlides } from "@/lib/questionPaper/render";
 import { smartSlidesHtml } from "@/lib/smartSlides/html";
 import type { LayoutReport } from "@/lib/questionPaper/layoutFit";
+import { logoDataUri } from "@/lib/instituteLogo";
+import InstituteLogo from "@/models/InstituteLogo";
 import Tuition from "@/models/Tuition";
 
 export const runtime = "nodejs";
@@ -62,6 +64,14 @@ export const POST = route(async (req) => {
   const tuition = await Tuition.findById(tuitionId).select("name phone").lean<{ name: string; phone?: string }>();
   if (paper.format === "smart") return smartPdf(paper, tuition?.name ?? "", req.headers.get("host") ?? "", received);
   paper.institute = [tuition?.name, tuition?.phone].filter(Boolean).join(" - ");
+  // The logo is the account's own tuition's, read from its stored copy: the
+  // request only says whether to print it, never what to print or from where.
+  if (paper.style?.logo) {
+    // Not .lean(): a lean read hands back a BSON Binary, not a Buffer (see lib/storage.ts).
+    const logo = await InstituteLogo.findOne({ tuitionId }).select("contentType data");
+    if (!logo) throw badRequest("Your institute has no logo yet. Ask the tuition's admin to add one, or turn the logo off.");
+    paper.logo = logoDataUri(logo);
+  }
   const figureUrls = figureUrlsOf(paper);
   if (figureUrls.length > MAX_FIGURES) {
     throw badRequest(`This paper has ${figureUrls.length} figures; a PDF can have at most ${MAX_FIGURES}. Pick fewer questions.`);
@@ -81,7 +91,8 @@ export const POST = route(async (req) => {
     ({ pdf, layout } = await renderPaper(
       questionPaperHtml(paper, figures),
       paper.questionPaper || paper.solutions ? paper.questions.length : 0,
-      RENDER_TIMEOUT_MS
+      RENDER_TIMEOUT_MS,
+      paper.watermark
     ));
   } catch (error) {
     if (error instanceof RenderBusyError) throw new HttpError(503, "The server is busy making other PDFs. Try again in a minute.");
@@ -173,7 +184,7 @@ async function smartPdf(paper: QuestionPaper, instituteName: string, host: strin
   const s = fit.stats;
   console.log(
     `[question-paper-pdf] smart: ${paper.questions.length} questions, ${s.slides} slides ` +
-      `(${s.short} short, ${s.medium} medium, ${s.full} full + ${s.blank} writing, ${s.continued} continued, ${s.shrunk} smaller text), ` +
+      `(${s.short} short, ${s.medium} medium, ${s.full} full + ${s.blank} writing, ${s.shrunk} smaller text), ` +
       `${errors.length} errors, ${pdf ? Math.round(pdf.length / 1024) : 0} KB; ${timing}`
   );
   for (const issue of fit.issues) console.warn(`[question-paper-pdf] smart ${issue.severity}: ${issue.where}: ${issue.kind}: ${issue.detail}`);

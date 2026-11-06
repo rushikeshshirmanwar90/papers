@@ -228,6 +228,8 @@ export interface PdfExpectation {
   questions: number;
   /** Raster figures the paper places; every one must be painted. */
   figures: number;
+  /** The watermark printed across each page, if any: it is slanted text, not paper content. */
+  watermark?: string;
 }
 
 /**
@@ -260,6 +262,8 @@ export async function checkPdf(bytes: Uint8Array, expect: PdfExpectation): Promi
     let marks = 0;
     for (const item of content.items) {
       if (!("str" in item) || !item.str.trim()) continue;
+      // The watermark is slanted (paper text never is) and may reach past the frame; it is neither content nor a stray.
+      if (expect.watermark && Math.abs(item.transform[1]) > 1e-3 && expect.watermark.includes(item.str.trim())) continue;
       const box: Box = {
         left: item.transform[4],
         right: item.transform[4] + item.width,

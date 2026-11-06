@@ -1,4 +1,4 @@
-import { escapeHtml, fontFaces, richText, richTokens, type EmbeddedFigures, type PaperQuestion, type QuestionPaper } from "../questionPaper/html";
+import { escapeHtml, fontFaces, fontStack, richText, type EmbeddedFigures, type PaperQuestion, type QuestionPaper } from "../questionPaper/html";
 import {
   DEFAULT_SMART_SLIDE_SETTINGS,
   MIN_FONT_PX,
@@ -24,24 +24,25 @@ import {
 //   medium  needs more: the area grows to fit, still leaving writing space
 //   full    needs most of the slide: it gets the whole slide, and a blank
 //           writing slide follows it
-//   continued  too long for a whole slide even at a slightly smaller size:
-//           numbered continuation slides, cut between sentences (or words),
-//           never inside a formula; the options always stay together on the
-//           last one, with the end of the question
 //
-// The PDF is printed from the page exactly as measured. A question that can't
-// be laid out legibly is reported and no PDF is printed at all.
+// A slide always holds one complete question with all its options: a question
+// is never cut across slides. One too long for a whole slide at the chosen
+// size is made to fit: its text is set smaller (first down to 80% of the
+// chosen size, then, as a last resort, to a small but legible size, which is
+// reported as a warning), and if the options are still too tall they are set
+// in a more compact layout. Only a question that still doesn't fit all that
+// (thousands of characters) is reported, and then no PDF is printed at all.
 
 /** The area may grow to this share of the slide and still count as leaving room to write; beyond it the question gets a whole slide and a blank slide after. */
 export const MEDIUM_MAX_SHARE = 0.65;
 /** Text is only made smaller (to avoid continuation slides) down to this share of the chosen size, and never under MIN_FONT_PX. */
 export const MIN_FONT_SHARE = 0.8;
+/** The smallest size a question's text is ever set at, as a last resort to keep the question whole (px on the 960-wide slide). */
+export const LAST_RESORT_FONT_PX = 11;
 /** A question's figure is shown up to this tall (its own size if smaller), and is only shrunk below it to fit a full slide. */
 export const FIGURE_PX = 220;
 /** A figure shrunk below this is reported as small. */
 export const FIGURE_MIN_PX = 80;
-/** A question needing more slides than this is refused. */
-export const MAX_PARTS = 6;
 
 /** The smallest size a question's text may be set at, for a chosen size. */
 export const minFontPx = (fontPx: number) => Math.max(MIN_FONT_PX, Math.ceil(fontPx * MIN_FONT_SHARE));
@@ -55,17 +56,6 @@ function figures(urls: string[], embedded: EmbeddedFigures, className: string, m
         ? `<img class="${className}" src="${data}" alt="" style="max-height:${Math.floor(maxHeight)}px">`
         : '<p class="missing">Figure could not be loaded.</p>';
     })
-    .join("");
-}
-
-/** The stem as words and formulas, each a span the measuring pass can cut after. */
-function stemHtml(text: string): string {
-  return richTokens(text)
-    .map(
-      (token, i) =>
-        `<span class="t" data-i="${i}"${token.sentenceEnd ? ' data-s="1"' : ""}>${token.html}</span>` +
-        (token.after === " " ? " " : token.after ? "<br>".repeat(token.after.length) : "")
-    )
     .join("");
 }
 
@@ -95,12 +85,12 @@ function fitConfig(settings: SmartSlideSettings) {
     gap: SLIDE.gap,
     font: g.fontPx,
     minFont: minFontPx(g.fontPx),
+    floorFont: Math.min(LAST_RESORT_FONT_PX, minFontPx(g.fontPx)),
     pref: g.contentHeight,
     full,
     medMax: Math.max(g.contentHeight, Math.floor(SLIDE.height * MEDIUM_MAX_SHARE) - g.contentTop - SLIDE.padBottom),
     figPx: FIGURE_PX,
     figMin: FIGURE_MIN_PX,
-    maxParts: MAX_PARTS,
   };
 }
 
@@ -127,7 +117,7 @@ export function smartSlidesHtml(paper: QuestionPaper, embedded: EmbeddedFigures)
       institute ? `<span class="inst">${escapeHtml(institute)}</span>` : ""
     }</div>
     <div class="body" style="font-size:${g.fontPx}px;height:${g.contentHeight}px">
-      <div class="text">${q.questionText.trim() ? `<div class="stem">${stemHtml(q.questionText)}</div>` : ""}${
+      <div class="text">${q.questionText.trim() ? `<div class="stem">${richText(q.questionText)}</div>` : ""}${
         keys.length ? optionsHtml(q, startLayout, keys, embedded) : ""
       }</div>${figureColumn}
     </div>
@@ -141,11 +131,11 @@ export function smartSlidesHtml(paper: QuestionPaper, embedded: EmbeddedFigures)
 <meta charset="utf-8">
 <title>${escapeHtml(paper.title)}</title>
 <style>
-  ${fontFaces()}
+  ${fontFaces(settings.fontFamily)}
   @page { size: ${SLIDE.width}px ${SLIDE.height}px; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: ${colors.background}; }
-  body { font-family: "Noto Sans", "Noto Sans Math", sans-serif; color: ${colors.text}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: ${fontStack(settings.fontFamily)}; color: ${colors.text}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   math { font-family: "Noto Sans Math", math; font-size: 1.05em; color: inherit; }
   /* Each slide is exactly one page and lays out on its own (contain), so
      measuring one slide never reflows the others. */
@@ -190,9 +180,8 @@ ${slides.join("\n")}
 /** How one question was laid out. */
 export interface SlidePlanEntry {
   q: number;
-  kind: "short" | "medium" | "full" | "continued";
-  /** Slides with the question on them (a blank writing slide not counted). */
-  parts: number;
+  kind: "short" | "medium" | "full";
+  /** A blank writing slide follows (the question took the whole slide). */
   blankAfter: boolean;
   fontPx: number;
   /** "horizontal", "grid", "vertical", or "" with no options. */
@@ -210,7 +199,6 @@ export interface SlideFitResult {
     short: number;
     medium: number;
     full: number;
-    continued: number;
     blank: number;
     shrunk: number;
     equationsScaled: number;
@@ -236,7 +224,7 @@ const FIT_SLIDES_SCRIPT = String.raw`(async () => {
   const t0 = performance.now();
   const issues = [];
   const plan = [];
-  const stats = { slides: 0, questions: 0, short: 0, medium: 0, full: 0, continued: 0, blank: 0, shrunk: 0, equationsScaled: 0, readyMs: 0, layoutMs: 0 };
+  const stats = { slides: 0, questions: 0, short: 0, medium: 0, full: 0, blank: 0, shrunk: 0, equationsScaled: 0, readyMs: 0, layoutMs: 0 };
   const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
   const num = (value) => parseFloat(value) || 0;
   const rect = (el) => el.getBoundingClientRect();
@@ -374,143 +362,65 @@ const FIT_SLIDES_SCRIPT = String.raw`(async () => {
     return null;
   };
 
-  // A question too long for a whole slide: cut between words (preferably at
-  // the end of a sentence), never inside a formula; the options stay together
-  // with the end of the question on the last slide.
-  const split = (first, q) => {
-    const out = [];
-    let cur = first;
-    for (let n = 0; n < C.maxParts; n++) {
-      chooseLayout(cur);
-      if (needed(cur).h <= C.full + 0.5) {
-        out.push(cur);
-        return out;
-      }
-      setArea(cur, C.full, q);
-      const p = partsOf(cur);
-      const tokens = p.stem ? $$('.t', p.stem) : [];
-      if (!tokens.length) return error(q, "Question " + q + "'s options are taller than a whole slide, even with smaller text.");
-      const top = rect(p.text).top;
-      const opts = p.options;
-      if (opts) opts.style.display = 'none';
-      const tops = tokens.map((t) => rect(t).top - top);
-      const bottoms = tokens.map((t) => rect(t).bottom - top);
-      if (opts) opts.style.display = '';
-      let j = -1;
-      for (let i = 0; i < tokens.length; i++) {
-        if (bottoms[i] <= C.full + 0.5) j = i;
-        else break;
-      }
-      if (j < 0) return error(q, 'Part of question ' + q + ' (a formula or figure) is taller than a whole slide.');
-      if (j === tokens.length - 1) {
-        // The rest of the question fits but not with its options: carry its
-        // last sentence (or at least its last line) over with them.
-        const optH = opts ? rect(opts).height + C.gap : 0;
-        if (optH > C.full) return error(q, "Question " + q + "'s options are taller than a whole slide.");
-        const end = bottoms[j];
-        let k = -1;
-        for (let i = j - 1; i >= 0; i--) {
-          if (end - tops[i + 1] + optH > C.full) break;
-          if (tokens[i].hasAttribute('data-s')) {
-            k = i;
-            break;
-          }
-        }
-        if (k < 0) {
-          for (let i = j - 1; i >= 0; i--) {
-            if (tops[i] < tops[j] - 1) {
-              if (end - tops[i + 1] + optH <= C.full) k = i;
-              break;
-            }
-          }
-        }
-        // Last resort: the whole question here, its four options together on the next slide.
-        if (k >= 0) j = k;
-      } else {
-        // End on a sentence when one finishes in the lower part of the slide.
-        for (let i = j; i >= 0 && bottoms[i] >= C.full * 0.6; i--) {
-          if (tokens[i].hasAttribute('data-s')) {
-            j = i;
-            break;
-          }
-        }
-      }
-      const next = cur.cloneNode(true);
-      // This slide: the stem up to token j, no options.
-      const cut = tokens[j];
-      while (cut.nextSibling) cut.nextSibling.remove();
-      if (opts) opts.remove();
-      cur.setAttribute('data-kind', 'continued');
-      setArea(cur, C.full, q);
-      out.push(cur);
-      // The next: the rest of the stem and the options, without the figures.
-      const nextStem = next.querySelector('.stem');
-      const from = nextStem.querySelector('.t[data-i="' + cut.getAttribute('data-i') + '"]');
-      while (nextStem.firstChild && nextStem.firstChild !== from) nextStem.firstChild.remove();
-      from.remove();
-      while (nextStem.firstChild && (nextStem.firstChild.nodeType === 3 || nextStem.firstChild.nodeName === 'BR')) nextStem.firstChild.remove();
-      if (!nextStem.firstChild) nextStem.remove();
-      const fig = next.querySelector('.fig');
-      if (fig) fig.remove();
-      cur.after(next);
-      cur = next;
-    }
-    return error(q, 'Question ' + q + ' needs more than ' + C.maxParts + ' slides.');
+  const OPTION_LAYOUTS = ['vertical', 'grid', 'horizontal'];
+  const layoutOf = (s) => {
+    const options = partsOf(s).options;
+    return options ? OPTION_LAYOUTS.find((c) => options.classList.contains(c)) || '' : '';
   };
 
   const questions = $$('.slide.q');
   stats.questions = questions.length;
   for (const s of questions) {
     const q = s.getAttribute('data-q');
+    // The whole question must fit one slide. Its text is set smaller a pixel
+    // at a time, from the chosen size to the least that is legible; only if
+    // the options are still too tall are they set in a more compact layout.
     let font = C.font;
     let m;
     for (;;) {
       setFont(s, font);
       chooseLayout(s);
       m = needed(s);
-      if (m.h <= C.full + 0.5 || font <= C.minFont) break;
+      if (m.h <= C.full + 0.5 || font <= C.floorFont) break;
       font--;
     }
-    let slides;
-    if (m.h <= C.full + 0.5) {
-      if (font < C.font) stats.shrunk++;
-      slides = [s];
-    } else {
-      // Too long for a slide even a little smaller: continue at the chosen size.
-      setFont(s, C.font);
-      slides = split(s, q);
-      if (!slides) continue;
-      font = C.font;
+    const options = partsOf(s).options;
+    if (m.h > C.full + 0.5 && options) {
+      // Vertical is the tallest layout, then 2 × 2, then one row of four.
+      for (const layout of OPTION_LAYOUTS.slice(OPTION_LAYOUTS.indexOf(layoutOf(s)) + 1)) {
+        options.classList.remove(...OPTION_LAYOUTS);
+        options.classList.add(layout);
+        m = needed(s);
+        if (m.h <= C.full + 0.5) break;
+      }
     }
-    const last = slides[slides.length - 1];
-    if (slides.length > 1) for (const part of slides) part.setAttribute('data-font', String(font));
-    const lastM = needed(last);
+    if (m.h > C.full + 0.5) {
+      error(q, 'it is too long to fit on one slide even at the smallest legible text size, and a question is never split across slides.');
+      continue;
+    }
+    if (font < C.font) stats.shrunk++;
+    if (font < C.minFont) say(q, 'warning', 'text-small', 'Question ' + q + "'s text was set at " + font + ' px, smaller than usual, to keep the question on one slide.');
+    s.setAttribute('data-font', String(font));
+    const lastM = needed(s);
     if (lastM.worst < 0.5) say(q, 'error', 'equation-unreadable', 'An equation in question ' + q + ' has no place to break and would print too small to read. Split it into steps.');
     else if (lastM.worst < 1) stats.equationsScaled++;
-    const { kind, bodyH } = finish(last, lastM.h, q);
-    slides.forEach((part, i) => {
-      part.setAttribute('data-part', String(i + 1));
-      part.setAttribute('data-parts', String(slides.length));
-      if (slides.length > 1) partsOf(part).qno.textContent = 'Q' + q + (i ? ' (continued)' : '') + ' · ' + (i + 1) + '/' + slides.length;
-    });
+    const { kind, bodyH } = finish(s, lastM.h, q);
+    // A question that took the whole slide is followed by a blank slide to solve it on.
     const blankAfter = kind === 'full';
     if (blankAfter) {
       const blank = document.createElement('section');
       blank.className = 'slide blank';
       blank.setAttribute('data-blank-for', q);
-      last.after(blank);
+      s.after(blank);
       stats.blank++;
     }
-    const overall = slides.length > 1 ? 'continued' : kind;
-    stats[overall]++;
-    const options = partsOf(last).options;
+    stats[kind]++;
     plan.push({
       q: Number(q),
-      kind: overall,
-      parts: slides.length,
+      kind,
       blankAfter,
       fontPx: font,
-      optionLayout: options ? ['horizontal', 'grid', 'vertical'].find((c) => options.classList.contains(c)) || '' : '',
+      optionLayout: layoutOf(s),
       areaPx: C.contentTop + bodyH + C.padBottom,
     });
   }

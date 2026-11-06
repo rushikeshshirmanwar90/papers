@@ -13,6 +13,7 @@ import SyllabusProgress from "@/models/SyllabusProgress";
 import TestAttempt from "@/models/TestAttempt";
 import TestRoom, { type TestRoomDoc } from "@/models/TestRoom";
 import TimetableEntry, { type TimetableEntryDoc } from "@/models/TimetableEntry";
+import JoinRequest from "@/models/JoinRequest";
 import User from "@/models/User";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +44,24 @@ export const GET = route(async (req) => {
     lastResult: lastAttempt ? { title: lastTest?.title ?? "Test", score: lastAttempt.score, maxScore: lastAttempt.maxScore, submittedAt: lastAttempt.submittedAt } : null,
   };
 
-  if (!batch) return { subjects, batch: null, today: [], week: [], recent: [], openTests: [], insight };
+  if (!batch) {
+    // Check for pending enrollment requests to show the right state on the student home.
+    const pendingRequest = await JoinRequest.findOne({ userId: user._id, tuitionId: session.tuitionId, status: "pending" })
+      .select("batchId")
+      .lean<{ batchId: Types.ObjectId | null } | null>();
+    let enrollmentStatus: "enrolled" | "approval_pending" | "batch_pending" | null = null;
+    let pendingBatchName: string | null = null;
+    if (pendingRequest) {
+      if (pendingRequest.batchId) {
+        enrollmentStatus = "approval_pending";
+        const pb = await Batch.findById(pendingRequest.batchId).select("name").lean<{ name: string }>();
+        pendingBatchName = pb?.name ?? null;
+      } else {
+        enrollmentStatus = "batch_pending";
+      }
+    }
+    return { subjects, batch: null, today: [], week: [], recent: [], openTests: [], insight, enrollmentStatus, pendingBatchName };
+  }
 
   const { day } = todayInIndia();
   const [names, count, coverage, classes, recent, open] = await Promise.all([
