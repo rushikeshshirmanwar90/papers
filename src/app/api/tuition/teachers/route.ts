@@ -7,14 +7,18 @@ import User, { type UserDoc } from "@/models/User";
 
 export const dynamic = "force-dynamic";
 
-/** The tuition's teachers, by name, each with the batches and subjects they teach. */
+/**
+ * The tuition's teachers, by name, each with the batches and subjects they teach.
+ * `self` is the admin's own account, which can be assigned to batches like a teacher
+ * but isn't listed (or editable) as one.
+ */
 export const GET = route(async (req) => {
-  const { tuitionId } = await requireUser(req, "tuition");
+  const { tuitionId, user } = await requireUser(req, "tuition");
   const [teachers, batches] = await Promise.all([
     User.find({ tuitionId, role: "teacher" }).sort({ name: 1 }) as Promise<UserDoc[]>,
     Batch.find({ tuitionId }).select("name teachers") as Promise<BatchDoc[]>,
   ]);
-  return { teachers: teachers.map((t) => teacherOut(t, batches)) };
+  return { teachers: teachers.map((t) => teacherOut(t, batches)), self: teacherOut(user, batches) };
 });
 
 /** Adds a teacher with a starting password the tuition gives them. */

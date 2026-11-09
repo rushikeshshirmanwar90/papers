@@ -60,7 +60,7 @@ export async function membersOf(tuitionId: string, batchIds: (Types.ObjectId | s
     else {
       const { default: Batch } = await import("@/models/Batch");
       const batches = await Batch.find({ _id: { $in: batchIds } }).select("teachers").lean<{ teachers: { teacherId: Types.ObjectId }[] }[]>();
-      or.push({ role: "teacher", _id: { $in: batches.flatMap((b) => b.teachers.map((t) => t.teacherId)) } });
+      or.push({ role: { $in: ["teacher", "tuition"] }, _id: { $in: batches.flatMap((b) => b.teachers.map((t) => t.teacherId)) } });
     }
   }
   if (!or.length) return [];

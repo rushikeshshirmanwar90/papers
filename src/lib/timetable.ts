@@ -3,7 +3,7 @@ import type { Session } from "@/lib/auth";
 import { HttpError, badRequest, isObjectId, oneOf, text } from "@/lib/http";
 import { SUBJECTS } from "@/lib/school";
 import { batchFor, mustTeach } from "@/lib/teaching";
-import { readSchedule } from "@/lib/tuition";
+import { readSchedule, TEACHING_ROLES } from "@/lib/tuition";
 import Batch, { type BatchDoc } from "@/models/Batch";
 import TimetableEntry, { type TimetableEntryDoc } from "@/models/TimetableEntry";
 import User from "@/models/User";
@@ -67,7 +67,7 @@ export async function readEntries(session: Session, body: Record<string, unknown
     if (body.teacherId === null || body.teacherId === "") teacherId = null;
     else {
       const teacher = isObjectId(body.teacherId)
-        ? await User.findOne({ _id: body.teacherId, tuitionId: session.tuitionId, role: "teacher" }).select("name subjects").lean<{ _id: Types.ObjectId; name: string; subjects: string[] }>()
+        ? await User.findOne({ _id: body.teacherId, tuitionId: session.tuitionId, role: { $in: TEACHING_ROLES } }).select("name subjects").lean<{ _id: Types.ObjectId; name: string; subjects: string[] }>()
         : null;
       if (!teacher) throw badRequest("Pick one of your teachers.");
       const assigned = batch.teachers.some((t) => String(t.teacherId) === String(teacher._id) && t.subject === subject);

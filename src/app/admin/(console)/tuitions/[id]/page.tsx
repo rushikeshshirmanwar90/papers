@@ -33,7 +33,7 @@ interface Person {
 
 interface TuitionDetail {
   tuition: { id: string; name: string; address: string; phone: string; email: string; active: boolean; createdAt: string };
-  login: { userId: string; email: string; lastLoginAt: string | null } | null;
+  login: { userId: string; name: string; email: string; lastLoginAt: string | null } | null;
   batches: { id: string; name: string; track: string; program?: string; academicYear?: string | null; standard: string | null; subjects: string[]; venue: string; weeklyMinutes: number; teachers: string[]; students: number }[];
   teachers: (Person & { subjects: string[] })[];
   students: (Person & { track: string | null; program?: string | null; standard: string | null; batch: string | null })[];
@@ -128,6 +128,8 @@ export default function TuitionDetailPage({ params }: { params: { id: string } }
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Owner's login">
           <dl className="grid grid-cols-[auto,1fr] gap-x-6 gap-y-2 px-5 py-4 text-[15px]">
+            <dt className="text-omr-lead">Admin name</dt>
+            <dd className="font-medium">{login?.name ?? "No login"}</dd>
             <dt className="text-omr-lead">Email</dt>
             <dd className="font-medium">{login?.email ?? "No login"}</dd>
             <dt className="text-omr-lead">Last login</dt>
@@ -240,7 +242,7 @@ export default function TuitionDetailPage({ params }: { params: { id: string } }
         )}
       </Panel>
 
-      <EditTuitionDialog open={editing} onClose={() => setEditing(false)} tuition={tuition} onSaved={reload} />
+      <EditTuitionDialog open={editing} onClose={() => setEditing(false)} tuition={tuition} adminName={login?.name ?? null} onSaved={reload} />
       <ResetPasswordDialog open={!!resetting} name={resetting?.name ?? ""} email={resetting?.email ?? ""} endpoint={resetting?.endpoint ?? ""} onClose={() => setResetting(null)} />
       <Dialog
         open={confirmingToggle}
@@ -262,8 +264,8 @@ export default function TuitionDetailPage({ params }: { params: { id: string } }
   );
 }
 
-function EditTuitionDialog({ open, onClose, tuition, onSaved }: { open: boolean; onClose: () => void; tuition: TuitionDetail["tuition"]; onSaved: () => void }) {
-  const [form, setForm] = useState({ name: tuition.name, address: tuition.address, phone: tuition.phone, email: tuition.email });
+function EditTuitionDialog({ open, onClose, tuition, adminName, onSaved }: { open: boolean; onClose: () => void; tuition: TuitionDetail["tuition"]; adminName: string | null; onSaved: () => void }) {
+  const [form, setForm] = useState({ name: tuition.name, adminName: adminName ?? "", address: tuition.address, phone: tuition.phone, email: tuition.email });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -271,7 +273,7 @@ function EditTuitionDialog({ open, onClose, tuition, onSaved }: { open: boolean;
   if (open !== openedFor) {
     setOpenedFor(open);
     if (open) {
-      setForm({ name: tuition.name, address: tuition.address, phone: tuition.phone, email: tuition.email });
+      setForm({ name: tuition.name, adminName: adminName ?? "", address: tuition.address, phone: tuition.phone, email: tuition.email });
       setError(null);
     }
   }
@@ -279,10 +281,12 @@ function EditTuitionDialog({ open, onClose, tuition, onSaved }: { open: boolean;
 
   const save = async () => {
     if (!form.name.trim()) return setError("Enter the tuition's name.");
+    if (adminName !== null && !form.adminName.trim()) return setError("Enter the admin's name.");
     setBusy(true);
     setError(null);
     try {
-      await adminFetch(`/api/admin/tuitions/${tuition.id}`, { method: "PATCH", body: form });
+      const { adminName: name, ...rest } = form;
+      await adminFetch(`/api/admin/tuitions/${tuition.id}`, { method: "PATCH", body: adminName !== null ? { ...rest, adminName: name } : rest });
       onSaved();
       onClose();
     } catch (e) {
@@ -305,6 +309,7 @@ function EditTuitionDialog({ open, onClose, tuition, onSaved }: { open: boolean;
       }
     >
       <Field label="Tuition name" value={form.name} onChange={set("name")} required />
+      {adminName !== null ? <Field label="Admin name" value={form.adminName} onChange={set("adminName")} required /> : null}
       <Field label="Address" value={form.address} onChange={set("address")} />
       <Field label="Phone" value={form.phone} onChange={set("phone")} type="tel" />
       <Field label="Contact email" value={form.email} onChange={set("email")} type="email" hint="Shown to its teachers and students. The login email doesn't change." />

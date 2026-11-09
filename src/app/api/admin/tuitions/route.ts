@@ -20,7 +20,7 @@ export const GET = route(async (req) => {
   const counts = await User.aggregate<{ _id: { t: mongoose.Types.ObjectId; r: string }; n: number }>([
     { $group: { _id: { t: "$tuitionId", r: "$role" }, n: { $sum: 1 } } },
   ]);
-  const owners = await User.find({ role: "tuition" }).select("tuitionId email").lean();
+  const owners = await User.find({ role: "tuition" }).select("tuitionId email name").lean();
   const batchCounts = await Batch.aggregate<{ _id: mongoose.Types.ObjectId; n: number }>([{ $group: { _id: "$tuitionId", n: { $sum: 1 } } }]);
   return {
     tuitions: tuitions.map((t) => {
@@ -33,6 +33,7 @@ export const GET = route(async (req) => {
         email: t.email,
         active: t.active,
         loginEmail: owners.find((o) => String(o.tuitionId) === String(t._id))?.email ?? null,
+        adminName: owners.find((o) => String(o.tuitionId) === String(t._id))?.name ?? null,
         teachers: count("teacher"),
         students: count("student"),
         batches: batchCounts.find((b) => String(b._id) === String(t._id))?.n ?? 0,
@@ -44,12 +45,15 @@ export const GET = route(async (req) => {
 
 /**
  * Creates a tuition and the account it logs in with:
- * { name, address?, phone?, loginEmail, password }
+ * { name, adminName?, address?, phone?, loginEmail, password }
+ * `adminName` is the person who runs it (their own name on the account); without it
+ * (older scripts) the account is named after the tuition.
  */
 export const POST = route(async (req) => {
   await requireAdmin(req);
   const body = await readJson(req);
   const name = text(body, "name", { required: true, max: 120, label: "the tuition's name" })!;
+  const adminName = text(body, "adminName", { max: 100, label: "the admin's name" }) ?? name;
   const loginEmail = email(body, "loginEmail");
   const pass = password(body);
 
@@ -65,7 +69,7 @@ export const POST = route(async (req) => {
       passwordHash: await hashPassword(pass),
       role: "tuition",
       emailVerified: true,
-      name,
+      name: adminName,
       phone: tuition.phone,
       tuitionId: tuition._id,
     });

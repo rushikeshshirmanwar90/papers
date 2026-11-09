@@ -103,7 +103,7 @@ function TuitionsPage() {
 }
 
 function AddTuitionDialog({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: () => void }) {
-  const empty = { name: "", address: "", phone: "", loginEmail: "", password: "" };
+  const empty = { name: "", adminName: "", address: "", phone: "", loginEmail: "", password: "" };
   const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +125,7 @@ function AddTuitionDialog({ open, onClose, onAdded }: { open: boolean; onClose: 
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!form.name.trim() || !form.loginEmail.trim()) return setError("Enter the tuition's name and the email it logs in with.");
+    if (!form.name.trim() || !form.adminName.trim() || !form.loginEmail.trim()) return setError("Enter the tuition's name, the admin's name and the email it logs in with.");
     if (form.password.length < 8) return setError("The password needs at least 8 characters.");
     setBusy(true);
     setError(null);
@@ -182,6 +182,7 @@ function AddTuitionDialog({ open, onClose, onAdded }: { open: boolean; onClose: 
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <Field label="Tuition name" value={form.name} onChange={set("name")} placeholder="e.g. Sharma Classes" required />
+          <Field label="Admin name" value={form.adminName} onChange={set("adminName")} placeholder="e.g. Rakesh Sharma" hint="The person who runs the tuition. Shown on their profile." required />
           <Field label="Address" value={form.address} onChange={set("address")} placeholder="Area and city" />
           <Field label="Phone" value={form.phone} onChange={set("phone")} type="tel" />
           <Field label="Login email" value={form.loginEmail} onChange={set("loginEmail")} type="email" hint="The owner logs in to the app with this." required />
