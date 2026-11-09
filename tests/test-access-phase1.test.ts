@@ -247,6 +247,7 @@ describe('Phase 1 test audiences', () => {
   const batch=await m.Batch.create({tuitionId:ids.tuition,name:'Moved batch',track:'JEE',subjects:['Physics']});
   await m.User.updateOne({_id:ids.s1},{batchId:batch._id});
   await save(t.id,[{index:0,selected:'A'}]); await submit(t.id); const attempt=(await attemptsOf(t.id))[0];
+  assert.equal((await view(t.id, 'teacher')).test.batchStudents, 4);
   const id=String(attempt.studentId); await view(t.id,'s1'); assert.equal(id,ids.s1);
   await m.User.updateOne({_id:ids.s1},{batchId:ids.batch});
  });
@@ -313,6 +314,86 @@ test('explicit selected audience never falls back to batch access when version m
  await start(t.id, 's2', 403);
  await start(t.id, 's1');
  await createManaged({ studentIds: [ids.s1] }, 400);
+});
+
+test('concurrent creation retries publish one room and changed payload reuse is refused', async () => {
+ await m.TestRoom.init();
+ const requestId = 'creation_idempotency_fixture_001';
+ const closesAt = new Date(Date.now() + 3 * HOUR).toISOString();
+ const responses = await Promise.all([1, 2].map(() => createManaged({ requestId, closesAt })));
+ assert.equal(responses[0].test.id, responses[1].test.id);
+ assert.equal(await m.TestRoom.countDocuments({ creationRequestId: requestId }), 1);
+ assert.equal((await createManaged({ requestId, closesAt })).test.id, responses[0].test.id);
+ await createManaged({ requestId, closesAt, title: 'Changed retry payload' }, 409);
+});
+
+test('explicit exclusion wins overlapping allow lists, and duplicate students stay unique', async () => {
+ const { test: t } = await createManaged({ audienceMode: 'selected', studentIds: [ids.s1, ids.s1, ids.s2], excludedStudentIds: [ids.s1] });
+ await start(t.id, 's1', 403); await start(t.id, 's2');
+ const doc = await m.TestRoom.findById(t.id);
+ assert.equal(doc.roster.filter((r: { studentId: unknown }) => String(r.studentId) === ids.s1).length, 1);
+ await createManaged({ audienceMode: 'selected', studentIds: [ids.s1], excludedStudentIds: [ids.s1] }, 400);
+});
+
+test('monitor and summary do not present an inactive student as allowed', async () => {
+ const { test: t } = await createManaged();
+ await m.User.updateOne({ _id: ids.s2 }, { active: false });
+ try {
+  const monitorRoute = await import('@/app/api/tests/[id]/monitor/route');
+  const monitor = await json(await monitorRoute.GET(req('GET', `/api/tests/${t.id}/monitor`, 'teacher'), { params: { id: t.id } }), 200);
+  assert.equal(monitor.accessStudents.find((r: { student: { id: string } }) => r.student.id === ids.s2).allowed, false);
+  assert.equal(monitor.counts.notStarted, 3);
+  assert.equal((await view(t.id, 'teacher')).test.batchStudents, 3);
+ } finally { await m.User.updateOne({ _id: ids.s2 }, { active: true }); }
+});
+
+test('scheduled editing cannot inject a bank question outside the validated scope', async () => {
+ const { test: t } = await createManaged({ startNow: false, opensAt: new Date(Date.now() + HOUR).toISOString() });
+ await start(t.id, 's1', 400);
+ const before = await m.TestRoom.findById(t.id).lean();
+ await json(await m.testRoute.PATCH(req('PATCH', `/api/tests/${t.id}`, 'teacher', { questions: [{ _id: '000000000000000000000001', questionText: 'Unverified question', correctAnswer: 'A' }] }), { params: { id: t.id } }), 400);
+ assert.deepEqual((await m.TestRoom.findById(t.id).lean()).questions, before.questions);
+});
+
+test('admin assigns themselves, teaches across two batches, closes normally with an extended student, then reads final performance from the same account', async () => {
+ const owner = await m.User.create({ email: 'admin-integration@test.local', name: 'Integration admin', passwordHash: 'x', role: 'tuition', tuitionId: ids.tuition, emailVerified: true });
+ tokens.integration = await m.auth.signToken(owner);
+ const asTeacher = (method: string, path: string, body?: unknown) => { const request = req(method, path, 'integration', body); request.headers.set('x-workspace', 'teacher'); return request; };
+ const batch2 = await m.Batch.findOne({ tuitionId: ids.tuition, name: '12 JEE' });
+ const assign = await import('@/app/api/tuition/batches/[id]/teachers/route');
+ await json(await assign.PUT(req('PUT', `/api/tuition/batches/${ids.batch}/teachers`, 'integration', { teacherId: String(owner._id), subjects: ['Physics'] }), { params: { id: ids.batch } }), 200);
+ const overview = await import('@/app/api/teacher/overview/route');
+ const teaching = await json(await overview.GET(asTeacher('GET', '/api/teacher/overview'), {}), 200);
+ assert.deepEqual(teaching.batches.map((b: { id: string }) => b.id), [ids.batch]);
+ const { test: t } = await json(await m.listRoute.POST(asTeacher('POST', '/api/tests', { batchIds: [ids.batch, String(batch2._id)], title: 'Admin teacher integration', subject: 'Physics', audienceMode: 'selected', studentIds: [ids.s1, ids.s2, ids.s4], startNow: true, closesAt: new Date(Date.now() + 2 * HOUR).toISOString(), durationMinutes: 60, questions: [{ questionText: 'Safe disposable fixture', optionA: '1', correctAnswer: 'A' }] }), {}), 200);
+ const doc = await m.TestRoom.findById(t.id);
+ assert.equal(String(doc.teacherId), String(owner._id)); assert.equal(String(doc.tuitionId), ids.tuition);
+ await start(t.id, 's3', 403); await access(t.id, 's3', 'request');
+ const accessRoute = await import('@/app/api/tests/[id]/access/route');
+ await json(await accessRoute.POST(asTeacher('POST', `/api/tests/${t.id}/access`, { action: 'approve', studentId: ids.s3 }), { params: { id: t.id } }), 200);
+ assert.equal((await view(t.id, 's3')).access.allowed, true);
+ const first = (await start(t.id, 's1')).attempt; await start(t.id, 's2');
+ const controls = await import('@/app/api/tests/[id]/attempt-control/route');
+ const payload = { action: 'extend', studentId: ids.s1, minutes: 10, requestId: 'admin_integration_extend_001' };
+ for (let retry = 0; retry < 2; retry++) await json(await controls.POST(asTeacher('POST', `/api/tests/${t.id}/attempt-control`, payload), { params: { id: t.id } }), 200);
+ assert.equal((await m.TestAttempt.findOne({ testId: t.id, studentId: ids.s1 })).individualDeadline.getTime(), Date.parse(first.deadline) + 10 * MIN);
+ await submit(t.id, { answers: [{ index: 0, selected: 'A' }] }, 's2');
+ await m.TestRoom.updateOne({ _id: t.id }, { closesAt: new Date(Date.now() - 1000) });
+ const results = await import('@/app/api/tests/[id]/results/route');
+ await json(await results.GET(asTeacher('GET', `/api/tests/${t.id}/results`), { params: { id: t.id } }), 409);
+ await start(t.id, 's4', 400);
+ await save(t.id, [{ index: 0, selected: 'A' }], 's1');
+ await submit(t.id, {}, 's1');
+ const completed = await json(await m.testRoute.GET(asTeacher('GET', `/api/tests/${t.id}`), { params: { id: t.id } }), 200);
+ assert.equal(completed.test.status, 'closed');
+ const performance = await json(await results.GET(asTeacher('GET', `/api/tests/${t.id}/results`), { params: { id: t.id } }), 200);
+ assert.equal(performance.summary.attempted, 2);
+ for (const request of [asTeacher('GET', '/api/tests'), req('GET', '/api/tests', 'integration')]) {
+  const history = await json(await m.listRoute.GET(request, {}), 200);
+  assert.ok(history.tests.some((test: { id: string }) => test.id === t.id));
+ }
+ assert.equal(await m.User.countDocuments({ email: 'admin-integration@test.local' }), 1);
+ assert.equal((await m.User.findById(owner._id)).role, 'tuition');
 });
 
 test('batch deletion and student removal preserve test and attempt IDs and scores', async()=>{

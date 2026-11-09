@@ -10,6 +10,6 @@ export const POST = route<{ params: { id: string } }>(async (req, { params }) =>
   const session = await requireUser(req, "student");
   const { test } = await testFor(session, params.id);
   const body = await readJson(req).catch(() => ({} as Record<string, unknown>));
-  const attempt = await startAttempt(test, session, body.visibility === true);
+  const attempt = await startAttempt(test, session, body.visibility === true, body.answerVersions === true);
   return { attempt: await attemptOut(test, attempt), questions: questionsFor(test, (await resultsReleased(test))) };
 });

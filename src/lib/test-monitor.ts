@@ -127,7 +127,7 @@ export async function monitorTest(test: TestRoomDoc) {
     User.find({ tuitionId: test.tuitionId, role: "student", ...(hasManagedAccess(test) ? { $or: [{ batchId: { $in: batchesOfTest(test) } }, { _id: { $in: (test.roster ?? []).map(r => r.studentId) } }] } : { batchId: test.batchId }) }).select("name active batchId accountStatus mustChangePassword").lean<{ _id: Types.ObjectId; name: string; batchId?: Types.ObjectId; active?: boolean; accountStatus?: string; mustChangePassword?: boolean }[]>(),
     TestAttempt.aggregate<MonitorAttempt>([
       // An attempt is only ever made for the test's own tuition and batch, so one that disagrees is not counted.
-      { $match: { testId: test._id, tuitionId: test.tuitionId, } },
+      { $match: { testId: test._id, tuitionId: test.tuitionId, batchId: { $in: batchesOfTest(test) } } },
       {
         $project: {
           studentId: 1,
@@ -166,7 +166,9 @@ export async function monitorTest(test: TestRoomDoc) {
   const candidateIds = new Set(batchesOfTest(test).map(String));
   const accessStudents = [...batchStudents, ...movedStudents].filter(s => candidateIds.has(String(s.batchId)) || attempted.has(String(s._id))).map(s => {
     const r = test.roster?.find(r => String(r.studentId) === String(s._id));
-    return { student: { id: String(s._id), name: s.name }, batch: { id: String(s.batchId ?? ''), name: batchNames.find(b => String(b._id) === String(s.batchId))?.name ?? 'Former batch' }, allowed: hasManagedAccess(test) ? !!r?.allowed : true, started: !!r?.started || attempted.has(String(s._id)), request: r?.request ?? null, eligible: eligible ? eligible.has(String(s._id)) : candidateIds.has(String(s.batchId)) && activated(s as Parameters<typeof activated>[0]) };
+    const canEnroll = eligible ? eligible.has(String(s._id)) : candidateIds.has(String(s.batchId)) && activated(s as Parameters<typeof activated>[0]);
+    const canAttend = activated(s as Parameters<typeof activated>[0]) && (attempted.has(String(s._id)) || (canEnroll && (!hasManagedAccess(test) || !!r?.allowed)));
+    return { student: { id: String(s._id), name: s.name }, batch: { id: String(s.batchId ?? ''), name: batchNames.find(b => String(b._id) === String(s.batchId))?.name ?? 'Former batch' }, allowed: canAttend, started: !!r?.started || attempted.has(String(s._id)), request: r?.request ?? null, eligible: canEnroll };
   });
 
   // Score attempts whose time is up, as the results list does, so the stored data catches up

@@ -4,11 +4,9 @@ import TestAttempt from '@/models/TestAttempt';
 import type { TestRoomDoc } from '@/models/TestRoom';
 import type { ClientSession } from 'mongoose';
 import { withTestLock } from '@/lib/test-lock';
-import { finalizeLocked } from '@/lib/attempts';
+import { deadlineOf, finalizeLocked } from '@/lib/attempts';
 
-/** Only individual continuations can outlive normal closing. Before closing a
- * suspension awaits the teacher; after closing it is finalized once no active
- * extended attempt remains (see completionReleased). */
+/** Extensions and suspensions awaiting a teacher both keep the room live. */
 export async function continuationOf(testId: unknown, now = new Date(), session?: ClientSession, includeSuspended = true) {
   return !!await TestAttempt.exists({ testId, submittedAt: null, ...(includeSuspended
     ? { $or: [{ suspendedAt: { $ne: null } }, { individualDeadline: { $gt: now } }] }
@@ -31,11 +29,14 @@ export async function completionReleased(test: { _id: unknown }) {
       for (const attempt of watching) await reconcileVisibilityLocked(fresh, attempt, session);
     }
     if (fresh.manuallyEndedAt) return true;
-    // Final completion point: no active extended attempt remains, so unresolved
-    // suspensions are submitted with their saved answers (idempotent under the lock).
-    if (await continuationOf(fresh._id, new Date(), session, false)) return false;
-    const suspended = await TestAttempt.find({ testId: fresh._id, tuitionId: fresh.tuitionId, submittedAt: null, suspendedAt: { $ne: null } }).session(session) as TestAttemptDoc[];
-    for (const attempt of suspended) await finalizeLocked(fresh, attempt, session, new Date(), true);
+    const unfinished = await TestAttempt.find({ testId: fresh._id, tuitionId: fresh.tuitionId, submittedAt: null }).session(session) as TestAttemptDoc[];
+    const now = new Date();
+    let pending = false;
+    for (const attempt of unfinished) {
+      if (attempt.suspendedAt || deadlineOf(fresh, attempt) > now) pending = true;
+      else await finalizeLocked(fresh, attempt, session, now);
+    }
+    if (pending) return false;
     return true;
   });
 }

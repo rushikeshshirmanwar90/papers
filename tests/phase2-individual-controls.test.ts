@@ -167,6 +167,46 @@ const changeAttempt = (id: string, change: Record<string, unknown>) => m.TestAtt
 const closeSchedule = (id: string) => m.TestRoom.updateOne({ _id: id }, { closesAt: new Date(Date.now() - MIN) });
 const rejectResults = (id: string) => m.results.GET(req('GET', `/api/tests/${id}/results`, 'teacher'), { params: { id } }).then(res => json(res, 409));
 
+describe('versioned answer integrity and atomic submission', () => {
+  const versioned = async () => {
+    const id = await room();
+    await json(await m.startRoute.POST(req('POST', `/api/tests/${id}/start`, 's1', { answerVersions: true }), { params: { id } }), 200);
+    return id;
+  };
+  test('older drafts and missing versions cannot overwrite newer answers; exact retries are safe', async () => {
+    const id = await versioned();
+    const answer = { index: 0, selected: 'A', baseVersion: 0 };
+    await save(id, [answer]); await save(id, [answer]);
+    assert.equal((await stored(id)).answers[0].version, 1);
+    await save(id, [{ index: 0, selected: 'B', baseVersion: 1 }]);
+    await save(id, [answer], 's1', 409);
+    await save(id, [{ index: 0, selected: 'C' }], 's1', 409);
+    await save(id, [{ index: 1, selected: 'B', baseVersion: -1 }], 's1', 400);
+    assert.equal((await stored(id)).answers[0].selected, 'B');
+    assert.equal((await stored(id)).answers[0].version, 2);
+    await submit(id, { answers: [answer] }, 's1', 409);
+    assert.equal((await stored(id)).submittedAt, null);
+    await submit(id, { answers: [{ index: 0, selected: 'A', baseVersion: 2 }] });
+    assert.equal((await stored(id)).score, 4);
+  });
+  test('concurrent save and submission either refuses a stale version or scores the final submission atomically', async () => {
+    const id = await versioned();
+    const responses = await Promise.all([
+      m.answersRoute.PUT(req('PUT', `/api/tests/${id}/answers`, 's1', { answers: [{ index: 0, selected: 'B', baseVersion: 0 }] }), { params: { id } }),
+      m.submitRoute.POST(req('POST', `/api/tests/${id}/submit`, 's1', { answers: [{ index: 0, selected: 'A', baseVersion: 0 }] }), { params: { id } }),
+    ]);
+    assert.ok([200, 400, 409].includes(responses[0].status));
+    assert.ok([200, 409].includes(responses[1].status));
+    let attempt = await stored(id);
+    if (!attempt.submittedAt) await submit(id, { answers: [{ index: 0, selected: 'A', baseVersion: attempt.answers[0].version }] });
+    attempt = await stored(id);
+    assert.ok(attempt.submittedAt); assert.equal(attempt.score, 4); assert.equal(attempt.answers[0].selected, 'A');
+    const rev = attempt.rev;
+    await submit(id, { answers: [{ index: 0, selected: 'D', baseVersion: 0 }] });
+    assert.equal((await stored(id)).rev, rev);
+  });
+});
+
 describe('individual deadline extensions', () => {
   test('quick and custom amounts are additive, audited, isolated and idempotent', async () => {
     const id = await room();
@@ -338,20 +378,26 @@ describe('violation suspension and teacher resolution', () => {
   });
 });
 
-describe('violation auto-submission at final completion', () => {
+describe('suspensions await teacher resolution after normal closing', () => {
   const suspendS1 = async (id: string) => {
     await start(id); await save(id, [{ index: 0, selected: 'A' }]);
     return (await event(id)).attempt;
   };
   const extendS2 = async (id: string) => { await start(id, 's2'); await control(id, 'extend', { studentId: ids.s2, minutes: 30 }); };
 
-  test('suspended attempt is submitted at normal close with saved answers, history kept, no resume', async () => {
+  test('normal close preserves suspension, answers and remaining time until teacher finalizes', async () => {
     const id = await room(); const paused = await suspendS1(id); await closeSchedule(id);
-    assert.equal((await view(id, 'teacher')).test.status, 'closed');
+    assert.equal((await view(id, 'teacher')).test.status, 'open');
     const a = await stored(id);
-    assert.ok(a.submittedAt); assert.equal(a.submittedAt.getTime(), new Date(paused.suspendedAt).getTime());
-    assert.equal(a.suspendedAt, null); assert.equal(a.score, 4); assert.equal(a.answers[0].selected, 'A');
+    assert.equal(a.submittedAt, null); assert.equal(a.suspendedAt.getTime(), new Date(paused.suspendedAt).getTime());
+    const listed = await json(await m.listRoute.GET(req('GET', '/api/tests?upcoming=1', 's1'), {}), 200);
+    assert.equal(listed.tests.find((t: { id: string }) => t.id === id).mine.state, 'suspended');
+    assert.equal(a.remainingMs, paused.remainingMs); assert.equal(a.answers[0].selected, 'A');
     assert.equal(a.events.length, 1); assert.equal(a.endedReason, 'violation');
+    await rejectResults(id);
+    await control(id, 'finalize', { suspendedAt: paused.suspendedAt });
+    assert.equal((await stored(id)).score, 4);
+    assert.equal((await view(id, 'teacher')).test.status, 'closed');
     await control(id, 'resume', { suspendedAt: paused.suspendedAt }, 409);
     await json(await m.results.GET(req('GET', `/api/tests/${id}/results`, 'teacher'), { params: { id } }), 200);
   });
@@ -366,27 +412,36 @@ describe('violation auto-submission at final completion', () => {
     assert.equal((await stored(id)).suspendedAt, null);
   });
 
-  test('last extended student submitting finalizes the suspended attempt and completes the test', async () => {
-    const id = await room(); await suspendS1(id); await extendS2(id); await closeSchedule(id);
+  test('last extended submission still leaves the suspension pending; teacher may resume after close', async () => {
+    const id = await room(); const paused = await suspendS1(id); await extendS2(id); await closeSchedule(id);
     await submit(id, {}, 's2');
-    assert.ok((await stored(id)).submittedAt); assert.equal((await stored(id)).score, 4);
+    assert.equal((await stored(id)).submittedAt, null);
+    assert.equal((await view(id, 'teacher')).test.status, 'open');
+    await rejectResults(id);
+    await control(id, 'resume', { suspendedAt: paused.suspendedAt });
+    assert.equal((await snapshot(id)).attempt.state, 'in-progress');
+    await submit(id, { resumeVersion: 1 });
     assert.equal((await view(id, 'teacher')).test.status, 'closed');
   });
 
-  test('extended student expiring finalizes the suspended attempt', async () => {
+  test('extended expiry finalizes only the expired attempt and keeps suspended peer pending', async () => {
     const id = await room(); await suspendS1(id); await extendS2(id); await closeSchedule(id);
     await m.TestAttempt.updateOne({ testId: id, studentId: ids.s2 }, { individualDeadline: new Date(Date.now() - 1000) });
-    assert.equal((await view(id, 'teacher')).test.status, 'closed');
-    assert.ok((await stored(id)).submittedAt);
+    assert.equal((await view(id, 'teacher')).test.status, 'open');
+    assert.equal((await stored(id)).submittedAt, null);
+    assert.ok((await stored(id, 's2')).submittedAt);
+    await rejectResults(id);
   });
 
-  test('concurrent and repeated completion reads finalize exactly once without changing the score', async () => {
+  test('concurrent completion reads never resolve a suspension or change its frozen time', async () => {
     const id = await room(); await suspendS1(id); await closeSchedule(id);
     await Promise.all([1, 2, 3].map(() => view(id, 'teacher')));
     const first = await stored(id);
     await view(id, 'teacher'); await snapshot(id);
     const again = await stored(id);
-    assert.equal(again.submittedAt.getTime(), first.submittedAt.getTime());
+    assert.equal(again.submittedAt, null);
+    assert.equal(again.suspendedAt.getTime(), first.suspendedAt.getTime());
+    assert.equal(again.remainingMs, first.remainingMs);
     assert.equal(again.score, first.score); assert.equal(again.rev, first.rev);
   });
 
@@ -537,11 +592,14 @@ describe('examination visibility grace and durable heartbeat', () => {
     // Closing is before the inferred grace boundary here: normal expiry wins.
     // Move closing after that boundary to model loss just before normal close.
     await m.TestRoom.updateOne({ _id: id }, { closesAt: new Date(Date.now() - 1000) });
-    assert.equal((await view(id, 'teacher')).test.status, 'closed'); // nothing extended: the suspension is submitted at close
-    assert.equal((await stored(id)).endedReason, 'violation'); assert.ok((await stored(id)).submittedAt);
+    assert.equal((await view(id, 'teacher')).test.status, 'open');
+    assert.equal((await stored(id)).endedReason, 'violation'); assert.equal((await stored(id)).submittedAt, null);
     const stopped = await report(id, packet({ sequence: 2 }));
-    assert.equal(stopped.attempt.state, 'submitted');
-    await control(id, 'resume', {}, 409);
+    assert.equal(stopped.attempt.state, 'suspended');
+    await rejectResults(id);
+    await closeNow(id);
+    assert.equal((await view(id, 'teacher')).test.status, 'closed');
+    await control(id, 'resume', { suspendedAt: stopped.attempt.suspendedAt }, 409);
   });
 
   test('visibility endpoints preserve teacher/student and cross-institute authorization', async () => {

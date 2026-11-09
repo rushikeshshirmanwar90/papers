@@ -150,29 +150,28 @@ export const maxScoreOf = (test: Pick<TestRoomDoc, "questions" | "marksPerQuesti
 /** Tests as lists show them: when, how long, how many have taken it and the average. */
 export async function testSummaries(tests: TestRoomDoc[]) {
   const ids = tests.map((t) => t._id);
-  const [batches, teachers, stats, studentCounts] = await Promise.all([
+  // Reconcile first so summaries include the attempts finalized at closing.
+  const now = Date.now();
+  await Promise.all(tests.map(hydrateCompletion));
+  const [batches, teachers, stats, students] = await Promise.all([
     Batch.find({ _id: { $in: tests.flatMap(batchesOfTest) } }).select("name").lean<{ _id: Types.ObjectId; name: string }[]>(),
     User.find({ _id: { $in: tests.map((t) => t.teacherId) } }).select("name").lean<{ _id: Types.ObjectId; name: string }[]>(),
-    TestAttempt.aggregate<{ _id: Types.ObjectId; started: number; submitted: number; avg: number | null }>([
+    TestAttempt.aggregate<{ _id: Types.ObjectId; started: number; submitted: number; avg: number | null; studentIds: Types.ObjectId[] }>([
       { $match: { testId: { $in: ids } } },
       {
         $group: {
           _id: "$testId",
           started: { $sum: 1 },
+          studentIds: { $addToSet: '$studentId' },
           submitted: { $sum: { $cond: [{ $ne: ["$submittedAt", null] }, 1, 0] } },
           avg: { $avg: { $cond: [{ $ne: ["$submittedAt", null] }, "$score", null] } },
         },
       },
     ]),
-    User.aggregate<{ _id: Types.ObjectId; n: number }>([
-      { $match: { role: "student", batchId: { $in: tests.map((t) => t.batchId) } } },
-      { $group: { _id: "$batchId", n: { $sum: 1 } } },
-    ]),
+    User.find({ tuitionId: { $in: tests.map(t => t.tuitionId) }, role: 'student', batchId: { $in: tests.flatMap(batchesOfTest) }, active: true, accountStatus: { $ne: 'invited' }, mustChangePassword: { $ne: true } }).select('batchId').lean<{ _id: Types.ObjectId; batchId: Types.ObjectId }[]>(),
   ]);
   // Freeze the list clock before completion checks. Crossing closesAt while
   // loading aggregates cannot release a stale average ahead of an extension.
-  const now = Date.now();
-  await Promise.all(tests.map(hydrateCompletion));
   return tests.map((t) => {
     const s = stats.find((x) => String(x._id) === String(t._id));
     return {
@@ -199,7 +198,10 @@ export async function testSummaries(tests: TestRoomDoc[]) {
       /** Students who have opened it, finished or not: once any have, it can't be edited. */
       started: s?.started ?? 0,
       submitted: s?.submitted ?? 0,
-      batchStudents: hasManagedAccess(t) ? (t.roster ?? []).filter(r => r.allowed).length : studentCounts.find((c) => String(c._id) === String(t.batchId))?.n ?? 0,
+      batchStudents: new Set([
+        ...students.filter(student => batchesOfTest(t).some(id => String(id) === String(student.batchId)) && (!hasManagedAccess(t) || t.roster?.some(r => r.allowed && String(r.studentId) === String(student._id)))).map(student => String(student._id)),
+        ...(s?.studentIds ?? []).map(String),
+      ]).size,
       averageScore: statusOf(t, now) === "closed" && s?.avg != null ? Math.round(s.avg * 10) / 10 : null,
     };
   });

@@ -44,7 +44,7 @@ export async function finalizeLocked(test: TestRoomDoc, current: TestAttemptDoc,
   const deadline = deadlineOf(test, current);
   const end = current.suspendedAt ? current.suspendedAt : now > deadline ? deadline : now;
   const done = await TestAttempt.findOneAndUpdate({ _id: current._id, submittedAt: null, rev: (current.rev ?? 0) === 0 ? { $in: [0, null] } : current.rev }, {
-    $set: { answers: result.answers, score: result.score, maxScore: result.maxScore,
+    $set: { answers: result.answers.map(a => ({ ...a, version: current.answers.find(saved => saved.index === a.index)?.version ?? 0 })), score: result.score, maxScore: result.maxScore,
       correctCount: result.correctCount, wrongCount: result.wrongCount, skippedCount: result.skippedCount,
       submittedAt: end, suspendedAt: null,
       timeTakenSeconds: Math.max(0, Math.round((end.getTime() - current.startedAt.getTime()) / 1000)) },
@@ -88,24 +88,39 @@ export async function finalizeExpired(test: TestRoomDoc): Promise<number> {
   return n;
 }
 
-export async function startAttempt(test: TestRoomDoc, session: Session, visibility = false): Promise<TestAttemptDoc> {
+export async function startAttempt(test: TestRoomDoc, session: Session, visibility = false, versionedAnswers = false): Promise<TestAttemptDoc> {
   await requireTestAccess(test, session);
   const existing = await currentAttempt(test, session);
-  if (existing) return existing;
+  if (existing) {
+    if (versionedAnswers && !existing.versionedAnswers && !existing.submittedAt) {
+      return withTestLock(test, async (_fresh, dbSession) => await TestAttempt.findByIdAndUpdate(existing._id,
+        { $set: { versionedAnswers: true }, $inc: { rev: 1 } }, { returnDocument: 'after', session: dbSession }) as TestAttemptDoc);
+    }
+    return existing;
+  }
   const status = statusOf(test);
   if (status === "scheduled") throw new HttpError(400, "This test hasn't opened yet.");
   if (status === "closed") throw new HttpError(400, "This test has closed.");
   // Starting late would cut the time limit short, so the last start is closing time minus the time limit.
   const lastStart = lastStartOf(test);
   if (test.accessVersion !== 1 && lastStart && Date.now() > lastStart.getTime()) throw new HttpError(400, "It's too late to start this test: there isn't enough time left for the full time limit.");
-  await claimStart(test, session);
   return withTestLock(test, async (fresh, dbSession) => {
     const previous = await TestAttempt.findOne({ testId: fresh._id, studentId: session.user._id }).session(dbSession) as TestAttemptDoc | null;
-    if (previous) return previous;
+    if (previous) {
+      if (versionedAnswers && !previous.versionedAnswers && !previous.submittedAt) {
+        previous.versionedAnswers = true;
+        previous.rev = (previous.rev ?? 0) + 1;
+        await previous.save({ session: dbSession });
+      }
+      return previous;
+    }
+    if (fresh.opensAt.getTime() > Date.now()) throw new HttpError(400, "This test hasn't opened yet.");
     if (fresh.manuallyEndedAt || fresh.closesAt.getTime() <= Date.now()) throw new HttpError(400, "This test has closed.");
+    await requireTestAccess(fresh, session);
+    await claimStart(fresh, session, dbSession);
     const [created] = await TestAttempt.create([{
       tuitionId: fresh.tuitionId, testId: fresh._id, batchId: session.user.batchId ?? fresh.batchId,
-      studentId: session.user._id, startedAt: new Date(), answers: [],
+      studentId: session.user._id, startedAt: new Date(), answers: [], versionedAnswers,
       ...(visibility ? { visibility: { clientId: `initial_${Date.now()}_${String(session.user._id)}`, sequence: 0, lastSeenAt: new Date(), retiredClients: [] } } : {}), maxScore: fresh.questions.length * fresh.marksPerQuestion,
     }], { session: dbSession });
     return created as TestAttemptDoc;
@@ -138,8 +153,17 @@ async function saveLocked(test: TestRoomDoc, attempt: TestAttemptDoc, raw: unkno
   if (attempt.submittedAt || expired(test, attempt)) throw new AttemptClosedError(400, "This attempt has ended.");
   if (attempt.suspendedAt) throw new AttemptClosedError(409, "Test paused due to violations.");
   const entries = readAnswers(test, raw);
-  const answers = new Map(attempt.answers.map(a => [a.index, { index: a.index, selected: a.selected, correct: a.correct }]));
-  for (const [index, selected] of entries) answers.set(index, { index, selected, correct: null });
+  const versions = new Map((raw as { index: number; baseVersion?: unknown }[]).map(a => [a.index, a.baseVersion]));
+  const answers = new Map(attempt.answers.map(a => [a.index, { index: a.index, selected: a.selected, correct: a.correct, version: a.version ?? 0 }]));
+  for (const [index, selected] of entries) {
+    const previous = answers.get(index);
+    const expected = versions.get(index);
+    if (attempt.versionedAnswers && expected === undefined) throw new HttpError(409, 'Refresh before saving versioned answers.');
+    if (expected !== undefined && (!Number.isSafeInteger(expected) || Number(expected) < 0)) throw new HttpError(400, 'Invalid answer version.');
+    if (expected !== undefined && expected !== (previous?.version ?? 0) && selected !== (previous?.selected ?? null)) throw new HttpError(409, 'An answer changed on the server. Refresh before saving.');
+    if (previous?.selected === selected) continue; // A retry must not advance the version twice.
+    answers.set(index, { index, selected, correct: null, version: (previous?.version ?? 0) + 1 });
+  }
   const done = await TestAttempt.findOneAndUpdate({ _id: attempt._id, submittedAt: null, suspendedAt: null,
     rev: (attempt.rev ?? 0) === 0 ? { $in: [0, null] } : attempt.rev, $expr: { $lt: ["$$NOW", deadlineOf(test, attempt)] } }, {
     $set: { answers: [...answers.values()] }, $inc: { rev: 1 },
@@ -156,7 +180,24 @@ export async function saveAnswers(test: TestRoomDoc, attempt: TestAttemptDoc, ra
     if (current.suspendedAt) return new AttemptClosedError(409, "Test paused due to violations.");
     if ((current.visibility || resumeVersion !== undefined) && resumeVersion !== (current.resumeVersion ?? 0)) return new HttpError(409, "The examination session changed. Refresh before saving.");
     const saved = await saveLocked(fresh, current, raw, session);
-    return saved.answers.filter(a => a.selected !== null).length;
+    return { saved: saved.answers.filter(a => a.selected !== null).length, answers: saved.answers.map(a => ({ index: a.index, selected: a.selected, version: a.version ?? 0 })) };
+  });
+  if (result instanceof HttpError) throw result;
+  return result;
+}
+
+/** Save final answers and score in one transaction, serialized with autosave,
+ * expiry and teacher controls. An older in-flight save cannot land between them. */
+export async function submitAnswers(test: TestRoomDoc, attempt: TestAttemptDoc, body: Record<string, unknown>) {
+  const result = await withTestLock(test, async (fresh, session) => {
+    const read = await TestAttempt.findById(attempt._id).session(session) as TestAttemptDoc;
+    let current = await reconcileVisibilityLocked(fresh, read, session);
+    if (current.submittedAt) return current;
+    if (fresh.manuallyEndedAt || expired(fresh, current)) return finalizeLocked(fresh, current, session, new Date(), !!fresh.manuallyEndedAt);
+    if (current.suspendedAt) return new HttpError(409, 'Test paused due to violations. Waiting for teacher decision.');
+    if ((current.visibility || body.resumeVersion !== undefined) && body.resumeVersion !== (current.resumeVersion ?? 0)) return new HttpError(409, 'The examination session changed. Refresh before submitting.');
+    if (body.answers !== undefined) current = await saveLocked(fresh, current, body.answers, session);
+    return finalizeLocked(fresh, current, session);
   });
   if (result instanceof HttpError) throw result;
   return result;
@@ -219,7 +260,7 @@ export async function attemptOut(test: TestRoomDoc, attempt: TestAttemptDoc | nu
     deadline: deadlineOf(test, attempt),
     /** The server's clock now, so the app can work out the time left without trusting the phone's. */
     serverTime: new Date(),
-    answers: [...attempt.answers].sort((a, b) => a.index - b.index).map((a) => ({ index: a.index, selected: a.selected, correct: attempt.submittedAt && reveal ? a.correct : null })),
+    answers: [...attempt.answers].sort((a, b) => a.index - b.index).map((a) => ({ index: a.index, selected: a.selected, version: a.version ?? 0, correct: attempt.submittedAt && reveal ? a.correct : null })),
     // Until the test closes a submitted student only gets confirmation: the submission time, no marks.
     result: attempt.submittedAt && !reveal
       ? { submittedAt: attempt.submittedAt }

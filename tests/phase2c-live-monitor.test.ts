@@ -5,14 +5,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, before, describe, test } from "node:test";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { NextRequest } from "next/server";
 
 const BASE = "http://localhost:3000";
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
-let mongod: MongoMemoryServer;
+let mongod: MongoMemoryReplSet;
 let m: Awaited<ReturnType<typeof load>>;
 
 async function load() {
@@ -156,7 +156,7 @@ async function json(res: Response, status: number) {
   return body;
 }
 
-type Row = { student: { id: string; name: string }; state: string; answered: number; total: number; startedAt: string | null; submittedAt: string | null; remainingSeconds: number | null };
+type Row = { student: { id: string; name: string }; state: string; answered: number; total: number; startedAt: string | null; submittedAt: string | null; remainingSeconds: number | null; resumable?: boolean };
 type Monitor = { status: string; serverTime: string; counts: Record<string, number>; students: Row[] };
 
 const watch = async (id: string, who = "teacher", status = 200): Promise<Monitor> => json(await m.monitorRoute.GET(req("GET", `/api/tests/${id}/monitor`, who), { params: { id } }), status);
@@ -169,7 +169,7 @@ const backdate = (id: string, who: string, ms: number) => m.TestAttempt.updateOn
 const rowOf = (mon: Monitor, who: string) => mon.students.find((r) => r.student.id === ids[who])!;
 
 before(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const uri = mongod.getUri();
   assert.match(uri, /^mongodb:\/\/127\.0\.0\.1:\d+\//, "tests must only run against the in-memory server");
   process.env.MONGODB_URI = uri;
@@ -265,7 +265,7 @@ describe("monitor: polling does not rewrite finished attempts", () => {
     await away(id, 60_000, "s3");
     const dump = async () => JSON.stringify(await m.TestAttempt.find({ testId: id }).sort({ studentId: 1 }).lean());
     const first = await watch(id);
-    assert.deepEqual([first.counts.submitted, first.counts.autoSubmitted, first.counts.violations, first.counts.inProgress], [3, 1, 1, 0]);
+    assert.deepEqual([first.counts.submitted, first.counts.autoSubmitted, first.counts.violations, first.counts.inProgress, first.counts.pendingResolution], [2, 1, 1, 0, 1]);
     const after = await dump();
     await Promise.all([watch(id), watch(id)]);
     await watch(id);
@@ -299,7 +299,7 @@ describe("monitor: states and progress", () => {
     assert.equal(rowOf(mon, "s3").state, "not-started");
   });
 
-  test("a violation is shown as such and counts as finalized", async () => {
+  test("a suspended violation awaits resolution and is not counted as finalized", async () => {
     const id = await room();
     await startNow(id, "s1");
     await save(id, [{ index: 2, selected: "C" }], "s1");
@@ -310,9 +310,11 @@ describe("monitor: states and progress", () => {
     const row = rowOf(mon, "s1");
     assert.equal(row.state, "violation");
     assert.equal(row.answered, 1);
-    assert.ok(row.submittedAt);
+    assert.equal(row.submittedAt, null);
+    assert.equal(row.resumable, true);
     assert.equal(mon.counts.violations, 1);
-    assert.equal(mon.counts.submitted, 1);
+    assert.equal(mon.counts.submitted, 0);
+    assert.equal(mon.counts.pendingResolution, 1);
     assert.equal(mon.counts.inProgress, 0);
   });
 
@@ -413,7 +415,7 @@ describe("monitor: access", () => {
     const text = JSON.stringify(mon);
     for (const leak of ["correctAnswer", "explanation", "Solution", "questionText", "optionA", "score", "selected", "correct"]) assert.ok(!text.includes(leak), `response mentions ${leak}`);
     assert.ok(!text.includes(ids.s4) && !text.includes(ids.s5));
-    assert.deepEqual(Object.keys(mon).sort(), ["counts", "serverTime", "status", "students"]);
+    assert.deepEqual(Object.keys(mon).sort(), ["accessStudents", "counts", "serverTime", "status", "students"]);
   });
 });
 
