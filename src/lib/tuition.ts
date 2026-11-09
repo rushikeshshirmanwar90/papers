@@ -15,6 +15,7 @@ import {
   subjectProblem,
   TRACKS,
   type Program,
+  type Role,
   type SchoolStandard,
   type SchoolSubject,
   type Track,
@@ -71,6 +72,9 @@ export function readSchedule(value: unknown): BatchSlot[] {
 /** Minutes of class a week. */
 export const weeklyMinutes = (schedule: BatchSlot[]) => schedule.reduce((sum, s) => sum + minutesOf(s.end) - minutesOf(s.start), 0);
 
+/** Who can be assigned to teach: the tuition's teachers, and its admin (who teaches from the Teacher workspace). */
+export const TEACHING_ROLES: Role[] = ["teacher", "tuition"];
+
 /** The batch's teachers: each an active teacher of this tuition, for one of the batch's subjects. */
 export async function readBatchTeachers(value: unknown, tuitionId: string, subjects: SchoolSubject[]) {
   if (value === undefined) return [];
@@ -83,7 +87,7 @@ export async function readBatchTeachers(value: unknown, tuitionId: string, subje
     return { teacherId: new Types.ObjectId(entry.teacherId), subject };
   });
   const ids = [...new Set(entries.map((e) => String(e.teacherId)))];
-  const found = await User.countDocuments({ _id: { $in: ids }, tuitionId, role: "teacher" });
+  const found = await User.countDocuments({ _id: { $in: ids }, tuitionId, role: { $in: TEACHING_ROLES } });
   if (found !== ids.length) throw badRequest("One of the teachers isn't part of this tuition.");
   // A teacher is assigned to a subject once; a subject can have several teachers.
   const seen = new Set<string>();
@@ -122,7 +126,7 @@ export function asDuplicateName(error: unknown): never {
  * the teacher's classes in the timetable can't be dropped.
  */
 export async function assignTeacher(batch: BatchDoc, teacherId: string, subjects: SchoolSubject[]) {
-  const teacher = isObjectId(teacherId) ? await User.findOne({ _id: teacherId, tuitionId: batch.tuitionId, role: "teacher" }).select("name") : null;
+  const teacher = isObjectId(teacherId) ? await User.findOne({ _id: teacherId, tuitionId: batch.tuitionId, role: { $in: TEACHING_ROLES } }).select("name") : null;
   if (!teacher) throw badRequest("Pick one of your teachers.");
   const unique = [...new Set(subjects)];
   const outside = unique.find((s) => !batch.subjects.includes(s));
@@ -255,7 +259,7 @@ export async function findMember(tuitionId: string, id: unknown, role: "teacher"
 type NameMap = Map<string, string>;
 
 export async function teacherNames(tuitionId: string): Promise<NameMap> {
-  const teachers = await User.find({ tuitionId, role: "teacher" }).select("name").lean<{ _id: Types.ObjectId; name: string }[]>();
+  const teachers = await User.find({ tuitionId, role: { $in: TEACHING_ROLES } }).select("name").lean<{ _id: Types.ObjectId; name: string }[]>();
   return new Map(teachers.map((t) => [String(t._id), t.name]));
 }
 

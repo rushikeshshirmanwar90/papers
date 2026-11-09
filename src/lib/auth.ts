@@ -118,13 +118,24 @@ export async function requireAccount(req: NextRequest): Promise<AccountSession> 
   return { user, userId: String(user._id), role: user.role ?? null, tuitionId: user.tuitionId ? String(user.tuitionId) : null };
 }
 
+/** Header the app sends to say which workspace a request is made from. */
+export const WORKSPACE_HEADER = "x-workspace";
+
+/** The workspaces an account may open: a tuition admin may also open the Teacher one. */
+export const workspacesOf = (role: Role | null): Role[] => (role === "tuition" ? ["tuition", "teacher"] : role ? [role] : []);
+
 /**
  * A member of a tuition making the request, or a 401/403. With roles given,
  * anyone else gets a 403.
+ *
+ * A tuition admin who asks for the Teacher workspace is treated as a teacher for
+ * that request: scoped to the batches they teach, with no admin-only routes. The
+ * header can only narrow what the account may do; for every other role it is ignored.
  */
 export async function requireUser(req: NextRequest, ...roles: Role[]): Promise<Session> {
   const account = await requireAccount(req);
   if (!account.role || !account.tuitionId) throw new HttpError(403, "Join a tuition first.");
+  if (account.role === "tuition" && req.headers.get(WORKSPACE_HEADER) === "teacher") account.role = "teacher";
   if (roles.length && !roles.includes(account.role)) throw new HttpError(403, "Your account can't do this.");
   if (account.user.mustChangePassword && account.role === "student") {
     throw new HttpError(403, "Change your password first.");
@@ -140,6 +151,8 @@ export async function publicUser(user: UserDoc) {
     email: user.email,
     /** null until a tuition accepts them as a student or teacher. */
     role: user.role ?? null,
+    /** The workspaces the account may switch between (the app's selector shows for more than one). */
+    workspaces: workspacesOf(user.role ?? null),
     emailVerified: user.emailVerified ?? false,
     name: user.name,
     phone: user.phone,

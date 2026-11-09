@@ -26,7 +26,7 @@ export const GET = route<Ctx>(async (req, { params }) => {
   const tuition = await find(params.id);
   const tid = tuition._id as Types.ObjectId;
   const [owner, people, batches, tests] = await Promise.all([
-    User.findOne({ tuitionId: tid, role: "tuition" }).select("email lastLoginAt").lean<{ _id: Types.ObjectId; email: string; lastLoginAt: Date | null }>(),
+    User.findOne({ tuitionId: tid, role: "tuition" }).select("name email lastLoginAt").lean<{ _id: Types.ObjectId; name: string; email: string; lastLoginAt: Date | null }>(),
     User.find({ tuitionId: tid, role: { $in: ["teacher", "student"] } })
       .select("name email phone role active lastLoginAt program track standard batchId subjects createdAt")
       .sort({ name: 1 })
@@ -47,7 +47,7 @@ export const GET = route<Ctx>(async (req, { params }) => {
 
   return {
     tuition: { id: String(tid), name: tuition.name, address: tuition.address, phone: tuition.phone, email: tuition.email, active: tuition.active, createdAt: tuition.createdAt },
-    login: owner ? { userId: String(owner._id), email: owner.email, lastLoginAt: owner.lastLoginAt } : null,
+    login: owner ? { userId: String(owner._id), name: owner.name, email: owner.email, lastLoginAt: owner.lastLoginAt } : null,
     batches: batches.map((b) => ({
       id: String(b._id),
       name: b.name,
@@ -76,7 +76,7 @@ export const GET = route<Ctx>(async (req, { params }) => {
 });
 
 /**
- * Edits the tuition, or turns it off/on: { name?, address?, phone?, email?, active? }.
+ * Edits the tuition, or turns it off/on: { name?, adminName?, address?, phone?, email?, active? }.
  * Turned off, nobody in it can log in or use the app.
  */
 export const PATCH = route<Ctx>(async (req, { params }) => {
@@ -89,7 +89,9 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   if (body.email !== undefined) tuition.email = (text(body, "email", { max: 200 }) ?? "").toLowerCase();
   if (body.active !== undefined) tuition.active = body.active === true;
   await tuition.save();
-  // Its own login carries the tuition's name.
-  if (body.name !== undefined) await User.updateOne({ tuitionId: tuition._id, role: "tuition" }, { name: tuition.name });
+  // The admin's own name is separate from the tuition's.
+  if (body.adminName !== undefined) {
+    await User.updateOne({ tuitionId: tuition._id, role: "tuition" }, { name: text(body, "adminName", { required: true, max: 100, label: "the admin's name" })! });
+  }
   return { tuition: { id: String(tuition._id), name: tuition.name, address: tuition.address, phone: tuition.phone, email: tuition.email, active: tuition.active } };
 });

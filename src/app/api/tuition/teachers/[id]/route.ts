@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: { id: string } };
 
 export const GET = route<Ctx>(async (req, { params }) => {
-  const { tuitionId } = await requireUser(req, "tuition");
-  const teacher = await findMember(tuitionId, params.id, "teacher");
+  const { tuitionId, userId, user } = await requireUser(req, "tuition");
+  // The admin's own account is listed among the teachers (it can teach); it is read-only here.
+  const teacher = params.id === userId ? user : await findMember(tuitionId, params.id, "teacher");
   const batches = (await Batch.find({ tuitionId, "teachers.teacherId": teacher._id })) as BatchDoc[];
   return { teacher: teacherOut(teacher, batches) };
 });
