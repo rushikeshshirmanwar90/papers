@@ -31,11 +31,13 @@ export async function reconcileVisibilityLocked(test: TestRoomDoc, attempt: Test
   if (test.manuallyEndedAt || attempt.submittedAt || attempt.suspendedAt || !attempt.visibility) return attempt;
   const visibility = attempt.visibility;
   const hidden = visibility.interruption;
-  const startedAt = hidden?.startedAt ?? visibility.lastSeenAt;
+  // Silence can mean a slow network or a busy foreground app. Only an
+  // observed background transition is evidence for a violation pause.
+  if (!hidden || hidden.reason !== 'app-background') return attempt;
+  const startedAt = hidden.startedAt;
   if (now.getTime() - startedAt.getTime() <= VISIBILITY_GRACE_MS) return attempt;
   return suspend(test, attempt, session, {
-    id: hidden?.id ?? `heartbeat_${attempt.resumeVersion ?? 0}_${startedAt.getTime()}`,
-    reason: hidden?.reason ?? 'visibility-unconfirmed', startedAt, returnedAt: null,
+    id: hidden.id, reason: hidden.reason, startedAt, returnedAt: null,
   }, now);
 }
 
@@ -82,7 +84,7 @@ export async function reportVisibility(test: TestRoomDoc, studentId: unknown, bo
       const hidden = previous?.interruption;
       if (hidden?.id === interruption.id && hidden.startedAt.getTime() !== interruption.startedAt.getTime()) throw new HttpError(409, 'Interruption timestamps changed.');
       const duration = (interruption.returnedAt ?? now).getTime() - interruption.startedAt.getTime();
-      if (duration > VISIBILITY_GRACE_MS) attempt = await suspend(fresh, attempt, session, interruption, now);
+      if (duration > VISIBILITY_GRACE_MS && interruption.reason === 'app-background') attempt = await suspend(fresh, attempt, session, interruption, now);
       else if (interruption.returnedAt) {
         completed = !previous?.interruption || previous.interruption.id === interruption.id;
         attempt = await TestAttempt.findOneAndUpdate({ _id: attempt._id, submittedAt: null, rev: revOf(attempt) }, {
@@ -93,8 +95,8 @@ export async function reportVisibility(test: TestRoomDoc, studentId: unknown, bo
     }
     if (attempt.suspendedAt) return attempt;
     // A completed short interruption explains a delayed foreground report.
-    // An unexplained lease gap (crash/kill/missed callback) remains conservative.
-    if (body.visible && previous?.interruption && !interruptions.some(i => i.id === previous.interruption!.id && i.returnedAt)) throw new HttpError(409, 'Report the interruption before answering.');
+    // A heartbeat gap alone is not evidence that the app was backgrounded.
+    if (body.visible && previous?.interruption?.reason === 'app-background' && !interruptions.some(i => i.id === previous.interruption!.id && i.returnedAt)) throw new HttpError(409, 'Report the interruption before answering.');
     if (!completed) attempt = await reconcileVisibilityLocked(fresh, attempt, session, now);
     if (attempt.suspendedAt) return attempt;
     if (deadlineOf(fresh, attempt) <= now) return finalizeLocked(fresh, attempt, session, now);

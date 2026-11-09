@@ -444,11 +444,11 @@ describe('examination visibility grace and durable heartbeat', () => {
 
   test('a persisted hidden screen suspends on status refresh even without a return callback', async () => {
     const id = await tracked(); const at = Date.now() - 11000;
-    const interruption = { id: randomUUID(), reason: 'focus-loss', startedAt: new Date(at) };
+    const interruption = { id: randomUUID(), reason: 'app-background', startedAt: new Date(at) };
     await oldLease(id, at, interruption);
     const paused = (await snapshot(id)).attempt;
     assert.equal(paused.state, 'suspended');
-    assert.equal((await stored(id)).events[0].reason, 'focus-loss');
+    assert.equal((await stored(id)).events[0].reason, 'app-background');
     await save(id, [{ index: 0, selected: 'B' }], 's1', 409);
     await report(id, packet({ sequence: 2, interruptions: [{ ...interruption, startedAt: iso(at), returnedAt: iso(Date.now()) }] }));
     assert.equal((await stored(id)).events.length, 1);
@@ -456,20 +456,29 @@ describe('examination visibility grace and durable heartbeat', () => {
     assert.equal((await snapshot(id)).attempt.state, 'suspended');
   });
 
-  test('missing heartbeats catch crashes/force-closes without inventing an OS reason; teacher resumes the same attempt', async () => {
+  test('missing heartbeats while foregrounded never create a violation or change the attempt', async () => {
     const id = await tracked(); const original = (await snapshot(id)).attempt;
-    await oldLease(id, Date.now() - 11000);
-    const paused = (await snapshot(id)).attempt;
-    assert.equal(paused.state, 'suspended');
-    assert.equal((await stored(id)).events[0].reason, 'visibility-unconfirmed');
-    await control(id, 'resume', { suspendedAt: paused.suspendedAt });
-    const resumed = (await snapshot(id)).attempt;
-    assert.equal(resumed.id, original.id); assert.equal(resumed.state, 'in-progress');
-    await report(id, packet({ sequence: 99, interruptions: [{ id: randomUUID(), reason: 'focus-loss', startedAt: iso(Date.now() - 11000) }] }));
-    assert.equal((await snapshot(id)).attempt.state, 'in-progress');
-    await report(id, packet({ resumeVersion: resumed.resumeVersion }));
+    await oldLease(id, Date.now() - 30000);
+    const current = (await snapshot(id)).attempt;
+    assert.equal(current.state, 'in-progress'); assert.equal(current.id, original.id);
+    assert.equal(current.deadline, original.deadline);
+    assert.equal((await stored(id)).events.length, 0);
+    await report(id, packet({ sequence: 2 }));
+    await save(id, [{ index: 0, selected: 'A' }]);
     assert.equal((await snapshot(id)).attempt.visibilityVerified, true);
-    assert.equal((await attemptsOf(id)).length, 1);
+    assert.equal((await stored(id)).answers[0].selected, 'A');
+  });
+
+  test('legacy blur, inactive, screen and split-window evidence cannot suspend a foreground student', async () => {
+    for (const reason of ['focus-loss', 'app-inactive', 'screen-focus-loss', 'split-screen']) {
+      const id = await tracked(); const at = Date.now() - 20000;
+      const interruption = { id: randomUUID(), reason, startedAt: new Date(at) };
+      await oldLease(id, at, interruption);
+      assert.equal((await snapshot(id)).attempt.state, 'in-progress');
+      const result = await report(id, packet({ sequence: 2, interruptions: [{ ...interruption, startedAt: iso(at), returnedAt: iso(Date.now()) }] }));
+      assert.equal(result.attempt.state, 'in-progress');
+      assert.ok((await stored(id)).events.every((event: { ended: boolean }) => !event.ended));
+    }
   });
 
   test('reopening within grace retires the old process; delayed packets cannot overwrite the current lease', async () => {
@@ -485,11 +494,11 @@ describe('examination visibility grace and durable heartbeat', () => {
     assert.equal(after.events.length, 0);
   });
 
-  test('reopening after grace cannot reset an expired heartbeat lease', async () => {
+  test('reopening after a heartbeat gap stays active without background evidence', async () => {
     const id = await tracked(); await oldLease(id, Date.now() - 11000);
     const result = await report(id, packet({ clientId: 'visibility_client_0002' }));
-    assert.equal(result.attempt.state, 'suspended');
-    assert.equal((await stored(id)).events.length, 1);
+    assert.equal(result.attempt.state, 'in-progress');
+    assert.equal((await stored(id)).events.length, 0);
   });
 
   test('delayed short-return evidence is safe, while an already suspended attempt never auto-resumes', async () => {
@@ -499,7 +508,7 @@ describe('examination visibility grace and durable heartbeat', () => {
     const result = await report(id, packet({ sequence: 2, interruptions: [{ ...interruption, startedAt: iso(at), returnedAt: iso(at + 9000) }] }));
     assert.equal(result.attempt.state, 'in-progress');
     assert.equal((await stored(id)).events[0].ended, false);
-    const second = await tracked(); await oldLease(second, at);
+    const second = await tracked(); await oldLease(second, at, { id: randomUUID(), reason: 'app-background', startedAt: new Date(at) });
     assert.equal((await snapshot(second)).attempt.state, 'suspended');
     await report(second, packet({ sequence: 2, interruptions: [{ id: randomUUID(), reason: 'app-background', startedAt: iso(at), returnedAt: iso(at + 9000) }] }));
     assert.equal((await snapshot(second)).attempt.state, 'suspended');
@@ -524,7 +533,7 @@ describe('examination visibility grace and durable heartbeat', () => {
 
   test('missed lifecycle evidence is resolved before completion/results; manual end remains a hard stop', async () => {
     const id = await tracked(); const at = Date.now() - 20000;
-    await oldLease(id, at); await closeSchedule(id);
+    await oldLease(id, at, { id: randomUUID(), reason: 'app-background', startedAt: new Date(at) }); await closeSchedule(id);
     // Closing is before the inferred grace boundary here: normal expiry wins.
     // Move closing after that boundary to model loss just before normal close.
     await m.TestRoom.updateOne({ _id: id }, { closesAt: new Date(Date.now() - 1000) });
@@ -542,18 +551,19 @@ describe('examination visibility grace and durable heartbeat', () => {
     await report(id, packet({ sequence: -1 }), 400);
   });
 
-  test('new mobile starts register last-seen even if killed before the first heartbeat', async () => {
+  test('new mobile starts do not infer background from a missing first heartbeat', async () => {
     const id = await room();
     await json(await m.startRoute.POST(req('POST', `/api/tests/${id}/start`, 's1', { visibility: true }), { params: { id } }), 200);
     assert.ok((await stored(id)).visibility);
     await changeAttempt(id, { startedAt: new Date(Date.now() - MIN) });
     await oldLease(id, Date.now() - 11000);
-    assert.equal((await snapshot(id)).attempt.state, 'suspended');
+    assert.equal((await snapshot(id)).attempt.state, 'in-progress');
   });
 
   test('delayed saves/submissions from before teacher resume cannot overwrite or end the resumed generation', async () => {
     const id = await tracked(); await save(id, [{ index: 0, selected: 'A' }]);
-    await oldLease(id, Date.now() - 11000);
+    const at = Date.now() - 11000;
+    await oldLease(id, at, { id: randomUUID(), reason: 'app-background', startedAt: new Date(at) });
     const paused = (await snapshot(id)).attempt;
     await control(id, 'resume', { suspendedAt: paused.suspendedAt });
     await json(await m.answersRoute.PUT(req('PUT', `/api/tests/${id}/answers`, 's1', { answers: [{ index: 0, selected: 'B' }], resumeVersion: 0 }), { params: { id } }), 409);
