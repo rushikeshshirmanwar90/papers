@@ -1,18 +1,17 @@
-// Phase 2B: secure exam mode, server side — an app-switch report ends the attempt
-// (marked as a violation), short interruptions do not, and an ended attempt can't be
-// restarted or edited. Runs the real route handlers against a throwaway in-memory MongoDB.
+// Secure exam: violations suspend the attempt for a teacher decision, keeping
+// saved answers. Short interruptions continue. Disposable replica-set database.
 // Run with: npm test
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, before, describe, test } from "node:test";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { NextRequest } from "next/server";
 
 const BASE = "http://localhost:3000";
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
-let mongod: MongoMemoryServer;
+let mongod: MongoMemoryReplSet;
 let m: Awaited<ReturnType<typeof load>>;
 
 async function load() {
@@ -159,7 +158,7 @@ const away = async (id: string, body: unknown, who = "s1", status = 200) =>
   json(await m.eventsRoute.POST(req("POST", `/api/tests/${id}/events`, who, body), { params: { id } }), status);
 
 before(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const uri = mongod.getUri();
   assert.match(uri, /^mongodb:\/\/127\.0\.0\.1:\d+\//, "tests must only run against the in-memory server");
   process.env.MONGODB_URI = uri;
@@ -199,32 +198,31 @@ describe("secure exam: interruptions", () => {
     await save(id, [{ index: 0, selected: "A" }]);
   });
 
-  test("being away longer than the limit ends the attempt with the answers sent, marked as a violation", async () => {
+  test("being away longer than the limit suspends with saved answers and frozen remaining time", async () => {
     const id = await room();
     await start(id);
     await save(id, [{ index: 0, selected: "A" }]);
     const body = await away(id, { type: "away", awayMs: 60_000, answers: [{ index: 1, selected: "B" }] });
-    assert.equal(body.attempt.state, "submitted");
+    assert.equal(body.attempt.state, "suspended");
     assert.equal(body.attempt.endedReason, "violation");
-    assert.deepEqual(body.attempt.answers.map((a: { selected: string | null }) => a.selected), ["A", "B", null]);
+    assert.deepEqual(body.attempt.answers.map((a: { selected: string | null }) => a.selected), ["A", "B"]);
     const a = await doc(id);
-    assert.ok(a!.submittedAt);
+    assert.equal(a!.submittedAt, null);
+    assert.ok(body.attempt.remainingMs > 0);
     assert.equal(a!.endedReason, "violation");
     assert.deepEqual(a!.events.map((e) => e.ended), [true]);
   });
 
-  test("an ended attempt can't be restarted, resumed, edited or submitted again", async () => {
+  test("a suspended attempt cannot be resumed, edited or submitted by the student", async () => {
     const id = await room();
     await start(id);
     await away(id, { type: "away", awayMs: 60_000 });
     const again = await start(id);
-    assert.equal(again.attempt.state, "submitted");
+    assert.equal(again.attempt.state, "suspended");
     assert.equal(again.attempt.endedReason, "violation");
     assert.equal((await attemptsOf(id)).length, 1);
-    await save(id, [{ index: 0, selected: "A" }], "s1", 400);
-    const second = await submit(id, { answers: [{ index: 0, selected: "A" }] });
-    assert.equal(second.attempt.endedReason, "violation");
-    assert.ok(second.attempt.answers.every((a: { selected: string | null }) => a.selected === null));
+    await save(id, [{ index: 0, selected: "A" }], "s1", 409);
+    await submit(id, { answers: [{ index: 0, selected: "A" }] }, 's1', 409);
     // Reporting again changes nothing.
     const repeat = await away(id, { type: "away", awayMs: 1 });
     assert.equal(repeat.attempt.endedReason, "violation");
@@ -235,7 +233,7 @@ describe("secure exam: interruptions", () => {
     const id = await room();
     await start(id);
     const body = await away(id, { type: "away", awayMs: 60_000, answers: [{ index: 0, selected: "A" }] });
-    assert.deepEqual(Object.keys(body.attempt.result), ["submittedAt"]);
+    assert.equal(body.attempt.result, null);
     assert.ok(!/correctAnswer|explanation|Solution/.test(JSON.stringify(body)));
     await closeNow(id);
     assert.equal((await view(id, "s1")).attempt.result.score, 4);
@@ -269,7 +267,7 @@ describe("secure exam: interruptions", () => {
     assert.equal((await doc(id))!.submittedAt, null);
   });
 
-  test("a confirmed violation with a valid answer list is finalized with those answers", async () => {
+  test("a confirmed violation preserves a valid final answer list without scoring", async () => {
     const id = await room();
     await start(id);
     await save(id, [{ index: 0, selected: "A" }]);
@@ -278,7 +276,7 @@ describe("secure exam: interruptions", () => {
     assert.deepEqual(body.attempt.answers.map((a: { selected: string | null }) => a.selected), ["A", "B", "D"]);
   });
 
-  // Invalid answers are never stored, but they must not stop the attempt from ending.
+  // Invalid answers are never stored and cannot prevent suspension.
   const badAnswers: [string, unknown][] = [
     ["an index outside the test", [{ index: 9, selected: "A" }]],
     ["a negative or fractional index", [{ index: -1, selected: "A" }, { index: 1.5, selected: "A" }]],
@@ -289,21 +287,21 @@ describe("secure exam: interruptions", () => {
     ["a valid answer next to an invalid one", [{ index: 1, selected: "B" }, { index: 9, selected: "A" }]],
   ];
   for (const [label, answers] of badAnswers) {
-    test(`a confirmed violation still ends the attempt when it carries ${label}; saved answers are kept and nothing invalid is stored`, async () => {
+    test(`a confirmed violation still suspends when it carries ${label}; saved answers remain intact`, async () => {
       const id = await room();
       await start(id);
       await save(id, [{ index: 0, selected: "A" }]);
       const body = await away(id, { type: "away", awayMs: 60_000, answers });
-      assert.equal(body.attempt.state, "submitted");
+      assert.equal(body.attempt.state, "suspended");
       assert.equal(body.attempt.endedReason, "violation");
-      assert.deepEqual(body.attempt.answers.map((a: { selected: string | null }) => a.selected), ["A", null, null]);
+      assert.deepEqual(body.attempt.answers.map((a: { selected: string | null }) => a.selected), ["A"]);
       const a = await doc(id);
-      assert.ok(a!.submittedAt);
+      assert.equal(a!.submittedAt, null);
       assert.equal(a!.endedReason, "violation");
       assert.deepEqual(a!.events.map((e) => e.ended), [true]);
       // Nothing more can be done to it.
-      await save(id, [{ index: 1, selected: "B" }], "s1", 400);
-      assert.equal((await start(id)).attempt.state, "submitted");
+      await save(id, [{ index: 1, selected: "B" }], "s1", 409);
+      assert.equal((await start(id)).attempt.state, "suspended");
     });
   }
 
@@ -315,18 +313,19 @@ describe("secure exam: interruptions", () => {
     assert.equal((await doc(id))!.submittedAt, null);
   });
 
-  test("repeated violation reports, valid or not, leave one submission and one final state", async () => {
+  test("repeated violation reports leave one unchanged suspension", async () => {
     const id = await room();
     await start(id);
     const first = await away(id, { type: "away", awayMs: 60_000, answers: [{ index: 9, selected: "A" }] });
     const again = await away(id, { type: "away", awayMs: 90_000, answers: [{ index: 0, selected: "A" }] });
-    assert.equal(again.attempt.result.submittedAt, first.attempt.result.submittedAt);
+    assert.equal(again.attempt.suspendedAt, first.attempt.suspendedAt);
+    assert.equal(again.attempt.result, null);
     assert.ok(again.attempt.answers.every((a: { selected: string | null }) => a.selected === null));
     assert.equal((await attemptsOf(id)).length, 1);
     assert.equal((await doc(id))!.events.length, 1);
   });
 
-  test("answers saved at the same moment as a violation are either scored or refused, never lost silently", async () => {
+  test("answers saved concurrently with a violation are preserved or refused", async () => {
     const id = await room();
     await start(id);
     const saves = [0, 1, 2].map((index) => m.answersRoute.PUT(req("PUT", `/api/tests/${id}/answers`, "s1", { answers: [{ index, selected: "ABC"[index] }] }), { params: { id } }));
@@ -334,12 +333,12 @@ describe("secure exam: interruptions", () => {
     const results = await Promise.all([...saves, report]);
     assert.equal(results[3].status, 200);
     const a = await doc(id);
-    assert.ok(a!.submittedAt);
+    assert.equal(a!.submittedAt, null);
     const kept = new Map(a!.answers.map((x) => [x.index, x.selected]));
     results.slice(0, 3).forEach((r, index) => {
       // An acknowledged save (200) is in the final answers.
       if (r.status === 200) assert.equal(kept.get(index), "ABC"[index]);
-      else assert.equal(r.status, 400);
+      else assert.equal(r.status, 409);
     });
   });
 

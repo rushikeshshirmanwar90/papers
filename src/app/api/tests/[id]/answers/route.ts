@@ -14,5 +14,5 @@ export const PUT = route<{ params: { id: string } }>(async (req, { params }) => 
   const attempt = await currentAttempt(test, session);
   if (!attempt) throw new HttpError(400, "Start the test first.");
   const body = await readJson(req);
-  return { saved: await saveAnswers(test, attempt, body.answers, body.resumeVersion) };
+  return saveAnswers(test, attempt, body.answers, body.resumeVersion);
 });

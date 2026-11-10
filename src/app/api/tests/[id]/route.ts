@@ -1,5 +1,6 @@
 import { endTest } from "@/lib/attempt-control";
-import { accessOf, hasManagedAccess } from '@/lib/test-access';
+import { accessOf, hasManagedAccess, audienceBatches, batchesOfTest, sharedScope, mustBeBankQuestions } from '@/lib/test-access';
+import { withTestLock } from '@/lib/test-lock';
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
 import { HttpError, badRequest, readJson, route, text } from "@/lib/http";
@@ -95,22 +96,32 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   if (status !== "scheduled") throw badRequest("This test has already opened, so it can't be edited. You can close it early.");
   if (await TestAttempt.exists({ testId: test._id })) throw badRequest("Students have already started this test, so it can't be edited.");
 
-  if (body.title !== undefined) test.title = text(body, "title", { required: true, max: 120, label: "a test name" })!;
-  if (body.questions !== undefined) test.set("questions", readQuestions(body.questions));
-  const marking = readMarking(body, test);
-  test.marksPerQuestion = marking.marksPerQuestion;
-  test.negativeMarks = marking.negativeMarks;
-  test.durationMinutes = readDuration(body.durationMinutes, test.durationMinutes);
-  const { opensAt, closesAt } = resolveSchedule({
-    startNow: body.startNow === true,
-    opensAt: readWhen(body.opensAt, "The start time", test.opensAt),
-    closesAt: readWhen(body.closesAt, "The end time", test.closesAt),
-    durationMinutes: test.durationMinutes,
+  const edited = await withTestLock(test, async (fresh, dbSession) => {
+    if (statusOf(fresh) !== 'scheduled' || await TestAttempt.exists({ testId: fresh._id }).session(dbSession)) throw badRequest("This test has already opened or students have started, so it can't be edited.");
+    if (body.title !== undefined) fresh.title = text(body, "title", { required: true, max: 120, label: "a test name" })!;
+    if (body.questions !== undefined) {
+      const batches = await audienceBatches(session, batchesOfTest(fresh).map(String), fresh.subject);
+      const scope = sharedScope(batches, fresh.subject, fresh.standard);
+      const questions = readQuestions(body.questions);
+      await mustBeBankQuestions(scope, questions);
+      fresh.set('questions', questions);
+    }
+    const marking = readMarking(body, fresh);
+    fresh.marksPerQuestion = marking.marksPerQuestion;
+    fresh.negativeMarks = marking.negativeMarks;
+    fresh.durationMinutes = readDuration(body.durationMinutes, fresh.durationMinutes);
+    const { opensAt, closesAt } = resolveSchedule({
+      startNow: body.startNow === true,
+      opensAt: readWhen(body.opensAt, "The start time", fresh.opensAt),
+      closesAt: readWhen(body.closesAt, "The end time", fresh.closesAt),
+      durationMinutes: fresh.durationMinutes,
+    });
+    fresh.opensAt = opensAt;
+    fresh.closesAt = closesAt;
+    await fresh.save({ session: dbSession });
+    return fresh;
   });
-  test.opensAt = opensAt;
-  test.closesAt = closesAt;
-  await test.save();
-  return { test: (await testSummaries([test]))[0], maxScore: maxScoreOf(test) };
+  return { test: (await testSummaries([edited]))[0], maxScore: maxScoreOf(edited) };
 });
 
 /** Cancels an upcoming test that no student has started. Questions in the bank are never touched. */
@@ -120,6 +131,9 @@ export const DELETE = route<Ctx>(async (req, { params }) => {
   mustEdit(canEdit);
   if (statusOf(test) !== "scheduled") throw badRequest("This test has already opened, so it can't be cancelled. You can close it early.");
   if (await TestAttempt.exists({ testId: test._id })) throw badRequest("Students have already started this test, so it can't be cancelled.");
-  await test.deleteOne();
+  await withTestLock(test, async (fresh, dbSession) => {
+    if (statusOf(fresh) !== 'scheduled' || await TestAttempt.exists({ testId: fresh._id }).session(dbSession)) throw badRequest("This test has already opened or students have started, so it can't be cancelled.");
+    await fresh.deleteOne({ session: dbSession });
+  });
   return { ok: true };
 });

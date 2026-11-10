@@ -5,6 +5,7 @@ import { programOf, questionBankOf, type SchoolSubject } from '@/lib/school';
 import type { BatchDoc } from '@/models/Batch';
 import { verifyQuestions, type BankScope } from '@/lib/makePdfBank';
 import TestRoom, { type TestRoomDoc } from '@/models/TestRoom';
+import type { ClientSession } from 'mongoose';
 import TestAttempt from '@/models/TestAttempt';
 import User, { type UserDoc } from '@/models/User';
 
@@ -60,9 +61,9 @@ export async function requireTestAccess(test: TestRoomDoc, session: Session) {
 }
 // A roster claim and revocation serialize on the same document. Once claimed,
 // access cannot be revoked even if attempt creation is still in flight.
-export async function claimStart(test: TestRoomDoc, session: Session) {
+export async function claimStart(test: TestRoomDoc, session: Session, dbSession?: ClientSession) {
   if (!hasManagedAccess(test)) return;
-  const claimed = await TestRoom.updateOne({ _id: test._id, tuitionId: session.tuitionId, opensAt: { $lte: new Date() }, closesAt: { $gt: new Date() }, roster: { $elemMatch: { studentId: session.user._id, allowed: true } } }, { $set: { 'roster.$.started': true }, $inc: { __v: 1 } });
+  const claimed = await TestRoom.updateOne({ _id: test._id, tuitionId: session.tuitionId, opensAt: { $lte: new Date() }, closesAt: { $gt: new Date() }, roster: { $elemMatch: { studentId: session.user._id, allowed: true } } }, { $set: { 'roster.$.started': true }, $inc: { __v: 1 } }, { session: dbSession });
   if (!claimed.matchedCount) throw new HttpError(403, 'Approval Required');
 }
 

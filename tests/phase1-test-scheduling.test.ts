@@ -4,14 +4,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, before, describe, test } from "node:test";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { NextRequest } from "next/server";
 
 const BASE = "http://localhost:3000";
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
-let mongod: MongoMemoryServer;
+let mongod: MongoMemoryReplSet;
 let m: Awaited<ReturnType<typeof load>>;
 
 async function load() {
@@ -141,7 +141,7 @@ const cancel = async (id: string, status = 200, who: keyof typeof tokens = "teac
 const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
 
 before(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const uri = mongod.getUri();
   assert.match(uri, /^mongodb:\/\/127\.0\.0\.1:\d+\//, "tests must only run against the in-memory server");
   process.env.MONGODB_URI = uri;

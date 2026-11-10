@@ -7,6 +7,8 @@ export interface TestAnswer {
   selected: string | null;
   /** Set when the attempt is submitted; null for a skipped or unmarked question. */
   correct: boolean | null;
+  /** Monotonic per-question version; prevents delayed drafts overwriting newer answers. */
+  version?: number;
 }
 
 /** Something that happened to the app during the attempt, reported by the student's phone. */
@@ -58,6 +60,7 @@ export interface TestAttemptDoc extends Document {
   remainingMs?: number;
   resumeVersion?: number;
   visibility?: AttemptVisibility | null;
+  versionedAnswers?: boolean;
   controls?: { requestId: string; action: string; teacherId: Types.ObjectId; at: Date; minutes: number; oldDeadline: Date; newDeadline: Date }[];
 }
 
@@ -66,6 +69,7 @@ const TestAnswerSchema = new Schema<TestAnswer>(
     index: { type: Number, required: true },
     selected: { type: String, default: null },
     correct: { type: Boolean, default: null },
+    version: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -105,6 +109,7 @@ const TestAttemptSchema = new Schema<TestAttemptDoc>({
   suspendedAt: { type: Date, default: null },
   remainingMs: { type: Number, default: 0 },
   resumeVersion: { type: Number, default: 0 },
+  versionedAnswers: { type: Boolean, default: false },
   visibility: { type: new Schema<AttemptVisibility>({
     clientId: String, sequence: Number, lastSeenAt: Date, retiredClients: [String],
     interruption: { type: new Schema({ id: String, reason: String, startedAt: Date }, { _id: false }), default: null },

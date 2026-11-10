@@ -55,6 +55,8 @@ export interface TestRoomDoc extends Document {
   closesAt: Date;
   manuallyEndedAt?: Date | null;
   controlRevision?: number;
+  creationRequestId?: string;
+  creationFingerprint?: string;
   /** Request-local participation data; never persisted. */
   continuationUntil?: Date | null;
   pendingResolution?: boolean;
@@ -107,11 +109,14 @@ const TestRoomSchema = new Schema<TestRoomDoc>(
     closesAt: { type: Date, required: true },
     manuallyEndedAt: { type: Date, default: null },
     controlRevision: { type: Number, default: 0 },
+    creationRequestId: String,
+    creationFingerprint: String,
   },
   { timestamps: true }
 );
 
 TestRoomSchema.index({ tuitionId: 1, createdAt: -1 });
+TestRoomSchema.index({ tuitionId: 1, teacherId: 1, creationRequestId: 1 }, { unique: true, partialFilterExpression: { creationRequestId: { $type: 'string' } } });
 TestRoomSchema.index({ tuitionId: 1, batchIds: 1, opensAt: -1 });
 // Test lists: a tuition's tests (or some batches') by when they open.
 TestRoomSchema.index({ tuitionId: 1, batchId: 1, opensAt: -1 });

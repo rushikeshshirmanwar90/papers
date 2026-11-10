@@ -273,15 +273,19 @@ describe("test finish paths (participation XP after the lock)", () => {
     assert.equal((await testXp(id, "s5"))?.xp, 80);
   });
 
-  test("results release settles a paused attempt and awards it", async () => {
+  test("closing finishes and awards an expired attempt; a paused one waits for the teacher with no XP", async () => {
     const id = await room();
+    await start(id, "s5");
     await start(id, "s6");
     await away(id, "s6");
     assert.equal(await testXp(id, "s6"), null);
     await m.TestRoom.updateOne({ _id: id }, { closesAt: new Date(Date.now() - MIN) });
-    assert.equal(await m.completion.completionReleased({ _id: id }), true);
-    assert.ok((await stored(id, "s6")).submittedAt);
-    assert.equal((await testXp(id, "s6"))?.xp, 80);
+    // The paused attempt keeps the room pending until a teacher decides (main's rule).
+    assert.equal(await m.completion.completionReleased({ _id: id }), false);
+    assert.ok((await stored(id, "s5")).submittedAt);
+    assert.equal((await testXp(id, "s5"))?.xp, 80);
+    assert.equal((await stored(id, "s6")).submittedAt, null);
+    assert.equal(await testXp(id, "s6"), null);
   });
 });
 
