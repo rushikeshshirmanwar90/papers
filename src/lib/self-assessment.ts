@@ -413,7 +413,7 @@ export async function assessmentFor(session: Session, id: unknown): Promise<Self
   if (!isObjectId(id)) throw notFound("This self-assessment");
   const a = (await SelfAssessment.findOne({ _id: id, studentId: session.user._id })) as SelfAssessmentDoc | null;
   if (!a) throw notFound("This self-assessment");
-  if (a.startedAt && !a.submittedAt && timeUp(a)) await finalize(a);
+  if (a.startedAt && !a.submittedAt && timeUp(a)) return finalize(a);
   return a;
 }
 
@@ -439,39 +439,90 @@ export function mergeAnswers(a: SelfAssessmentDoc, raw: unknown) {
   a.answers = [...byIndex.entries()].sort((x, y) => x[0] - y[0]).map(([index, selected]) => ({ index, selected, correct: null }));
 }
 
+// Autosave, Submit and the time-up check can save the same assessment at the
+// same moment. Each replaces the whole answers list, so Mongoose refuses a save
+// made from an out-of-date copy (VersionError). Then the change is re-applied
+// to the latest copy and saved again, so no answer is lost and no request fails.
+const MAX_SAVE_TRIES = 5;
+const isVersionClash = (error: unknown) => (error as { name?: string } | null)?.name === "VersionError";
+
+async function latest(a: SelfAssessmentDoc): Promise<SelfAssessmentDoc> {
+  const fresh = (await SelfAssessment.findOne({ _id: a._id, studentId: a.studentId })) as SelfAssessmentDoc | null;
+  if (!fresh) throw notFound("This self-assessment");
+  return fresh;
+}
+
+/** Saves answers ({ index, selected }) while it's in progress; returns the saved assessment. */
+export async function saveAnswers(a: SelfAssessmentDoc, raw: unknown): Promise<SelfAssessmentDoc> {
+  let doc = a;
+  for (let tries = 1; ; tries++) {
+    mergeAnswers(doc, raw);
+    try {
+      await doc.save();
+      return doc;
+    } catch (error) {
+      if (!isVersionClash(error) || tries >= MAX_SAVE_TRIES) throw error;
+      doc = await latest(doc);
+    }
+  }
+}
+
 /**
- * Marks it and closes it. The answered questions also count as practice: the
- * student's latest answer to each is kept, as answering it in Practice would.
+ * Marks it and closes it, with any last answers sent along (too late to change
+ * them is fine: the saved ones count). Returns the submitted assessment, which
+ * is a fresh copy if another save got in first. The answered questions also
+ * count as practice: the student's latest answer to each is kept, as answering
+ * it in Practice would.
  */
-export async function finalize(a: SelfAssessmentDoc, now = new Date()) {
-  if (a.submittedAt) return a;
-  if (!a.startedAt) throw new HttpError(400, "Start the self-assessment first.");
-  const given = new Map(a.answers.map((x) => [x.index, x.selected]));
-  const result = scoreAnswers(a.questions, given, a.marksPerQuestion, a.negativeMarks);
-  const deadline = deadlineOf(a);
-  const end = deadline && now > deadline ? deadline : now;
-  a.set({
-    answers: result.answers,
-    score: result.score,
-    maxScore: result.maxScore,
-    correctCount: result.correctCount,
-    wrongCount: result.wrongCount,
-    skippedCount: result.skippedCount,
-    submittedAt: end,
-    timeTakenSeconds: Math.max(0, Math.round((end.getTime() - a.startedAt.getTime()) / 1000)),
-  });
-  await a.save();
+export async function finalize(a: SelfAssessmentDoc, now = new Date(), lastAnswers?: unknown): Promise<SelfAssessmentDoc> {
+  let doc = a;
+  let result: ReturnType<typeof scoreAnswers>;
+  let end: Date;
+  for (let tries = 1; ; tries++) {
+    if (doc.submittedAt) return doc; // submitted already (or by the request that got in first)
+    const startedAt = doc.startedAt;
+    if (!startedAt) throw new HttpError(400, "Start the self-assessment first.");
+    if (lastAnswers !== undefined) {
+      try {
+        mergeAnswers(doc, lastAnswers);
+      } catch {
+        // Too late to change answers: the saved ones count.
+      }
+    }
+    const given = new Map(doc.answers.map((x) => [x.index, x.selected]));
+    result = scoreAnswers(doc.questions, given, doc.marksPerQuestion, doc.negativeMarks);
+    const deadline = deadlineOf(doc);
+    end = deadline && now > deadline ? deadline : now;
+    doc.set({
+      answers: result.answers,
+      score: result.score,
+      maxScore: result.maxScore,
+      correctCount: result.correctCount,
+      wrongCount: result.wrongCount,
+      skippedCount: result.skippedCount,
+      submittedAt: end,
+      timeTakenSeconds: Math.max(0, Math.round((end.getTime() - startedAt.getTime()) / 1000)),
+    });
+    try {
+      await doc.save();
+      break;
+    } catch (error) {
+      if (!isVersionClash(error) || tries >= MAX_SAVE_TRIES) throw error;
+      doc = await latest(doc);
+    }
+  }
+  const saved = doc;
 
   const practice = result.answers
-    .filter((x) => x.selected !== null && x.correct !== null && a.questions[x.index]?.sourceId)
+    .filter((x) => x.selected !== null && x.correct !== null && saved.questions[x.index]?.sourceId)
     .map((x) => {
-      const q = a.questions[x.index];
+      const q = saved.questions[x.index];
       return {
         updateOne: {
-          filter: { studentId: a.studentId, questionId: q.sourceId },
+          filter: { studentId: saved.studentId, questionId: q.sourceId },
           update: {
             $set: {
-              tuitionId: a.tuitionId,
+              tuitionId: saved.tuitionId,
               subject: schoolSubjectOf(q.subject),
               standard: q.standard,
               chapter: q.chapter,
@@ -489,7 +540,7 @@ export async function finalize(a: SelfAssessmentDoc, now = new Date()) {
     // The result is saved already; practice progress catching up is a bonus.
     await PracticeAnswer.bulkWrite(practice, { ordered: false }).catch((error) => console.error("[self-assessment] practice answers", error));
   }
-  return a;
+  return saved;
 }
 
 // ─── What the app gets ─────────────────────────────────────────────────────
@@ -609,8 +660,7 @@ export async function listFor(session: Session, subject: SchoolSubject | null) {
       // Marking needs the whole test: read it in full, still only the student's own.
       const full = (await SelfAssessment.findOne({ _id: a._id, studentId: session.user._id })) as SelfAssessmentDoc | null;
       if (!full) continue; // deleted meanwhile
-      await finalize(full);
-      summaries.push(summaryOf(full));
+      summaries.push(summaryOf(await finalize(full)));
       continue;
     }
     summaries.push(summaryOf(a));

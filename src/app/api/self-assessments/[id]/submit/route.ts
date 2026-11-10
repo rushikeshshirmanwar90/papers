@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { readJson, route } from "@/lib/http";
-import { assessmentFor, detailOf, finalize, mergeAnswers } from "@/lib/self-assessment";
+import { assessmentFor, detailOf, finalize } from "@/lib/self-assessment";
 
 export const dynamic = "force-dynamic";
 
@@ -10,17 +10,11 @@ export const dynamic = "force-dynamic";
  */
 export const POST = route<{ params: { id: string } }>(async (req, { params }) => {
   const session = await requireUser(req, "student");
-  const a = await assessmentFor(session, params.id);
+  let a = await assessmentFor(session, params.id);
   if (!a.submittedAt) {
     const body = await readJson(req).catch(() => ({}) as Record<string, unknown>);
-    if (body.answers !== undefined) {
-      try {
-        mergeAnswers(a, body.answers);
-      } catch {
-        // Too late to change answers: the saved ones count.
-      }
-    }
-    await finalize(a);
+    // Any last answers go in first; finalize retries if an autosave lands at the same moment.
+    a = await finalize(a, new Date(), body.answers);
   }
   return detailOf(a);
 });
