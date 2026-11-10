@@ -481,4 +481,40 @@ describe("self-assessment routes", () => {
       await create(who, setup(), 400);
     }
   });
+
+  // Last: these submit, which adds to the student's practice history that earlier tests read.
+  // The app autosaves one batch at a time, but Submit doesn't wait for a save in
+  // flight, and leaving the screen sends one last save. Requests can overlap.
+  const startOne = async () => {
+    const made = await create();
+    const id = made.assessment.id;
+    const started = await json(await m.startRoute.POST(req("POST", `/api/self-assessments/${id}/start`, "student"), ctx(id)), 200);
+    return { id, indexes: started.questions.map((q: { index: number }) => q.index) as number[] };
+  };
+  const put = (id: string, answers: unknown) => m.answersRoute.PUT(req("PUT", `/api/self-assessments/${id}/answers`, "student", { answers }), ctx(id));
+  const submitWith = (id: string, answers: unknown) => m.submitRoute.POST(req("POST", `/api/self-assessments/${id}/submit`, "student", { answers }), ctx(id));
+
+  test("two overlapping autosaves both succeed and both answers are kept", async () => {
+    const { id, indexes } = await startOne();
+    const [a, b] = await Promise.all([put(id, [{ index: indexes[0], selected: "A" }]), put(id, [{ index: indexes[1], selected: "B" }])]);
+    assert.deepEqual([a.status, b.status], [200, 200], `statuses ${a.status}, ${b.status}: ${JSON.stringify(await a.json())} ${JSON.stringify(await b.json())}`);
+    const saved = await m.SelfAssessment.findById(id).lean<{ answers: { index: number; selected: string | null }[] }>();
+    const got = new Map(saved!.answers.map((x) => [x.index, x.selected]));
+    assert.equal(got.get(indexes[0]), "A");
+    assert.equal(got.get(indexes[1]), "B");
+  });
+
+  test("an autosave overlapping Submit never fails with 500; the submission scores every answer it carried", async () => {
+    for (let round = 0; round < 5; round++) {
+      const { id, indexes } = await startOne();
+      const all = indexes.map((index) => ({ index, selected: "A" }));
+      const [saveRes, submitRes] = await Promise.all([put(id, [{ index: indexes[0], selected: "A" }]), submitWith(id, all)]);
+      const saveBody = await saveRes.json();
+      const submitBody = await submitRes.json();
+      assert.ok([200, 400].includes(saveRes.status), `round ${round}: save got ${saveRes.status}: ${JSON.stringify(saveBody)}`);
+      assert.equal(submitRes.status, 200, `round ${round}: submit got ${submitRes.status}: ${JSON.stringify(submitBody)}`);
+      assert.equal(submitBody.assessment.state, "submitted");
+      assert.equal(submitBody.assessment.result.correct, 10, `round ${round}: every answer sent with Submit is scored`);
+    }
+  });
 });
