@@ -46,3 +46,6 @@ next-env.d.ts
 
 # local development database (npm run dev:local)
 /.local-mongo/
+
+# Document backups written by data scripts (e.g. scripts/flag-broken-mcq-options.mjs)
+backups/
