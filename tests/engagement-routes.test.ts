@@ -28,6 +28,7 @@ async function load() {
     testRoute: await import("@/app/api/tests/[id]/route"),
     controls: await import("@/app/api/tests/[id]/attempt-control/route"),
     events: await import("@/app/api/tests/[id]/events/route"),
+    visibility: await import("@/app/api/tests/[id]/visibility/route"),
     attempts: await import("@/lib/attempts"),
     completion: await import("@/lib/test-completion"),
     selfLib: await import("@/lib/self-assessment"),
@@ -286,6 +287,63 @@ describe("test finish paths (participation XP after the lock)", () => {
     assert.equal((await testXp(id, "s5"))?.xp, 80);
     assert.equal((await stored(id, "s6")).submittedAt, null);
     assert.equal(await testXp(id, "s6"), null);
+  });
+
+  // Visibility-tracked attempts (the secure runner's heartbeat), as the app starts them.
+  const CLIENT = "engagement_client_0001";
+  const iso = (at: number) => new Date(at).toISOString();
+  const packet = (over: Record<string, unknown> = {}) => ({ clientId: CLIENT, sequence: 1, resumeVersion: 0, visible: true, observedAt: iso(Date.now()), interruptions: [], ...over });
+  const report = async (id: string, who: string, body: Record<string, unknown>) =>
+    json(await m.visibility.POST(req("POST", `/api/tests/${id}/visibility`, who, body), { params: { id } }), 200);
+  const startTracked = async (id: string, who: string) => {
+    await json(await m.start.POST(req("POST", `/api/tests/${id}/start`, who, { visibility: true }), { params: { id } }), 200);
+    await m.TestAttempt.updateOne({ testId: id, studentId: ids[who] }, { startedAt: new Date(Date.now() - MIN) });
+    await report(id, who, packet());
+  };
+  const xpEvents = (id: string, who: string) => m.XpEvent.countDocuments({ key: `test:${ids[who]}:${id}` });
+
+  test("at close, a tracked attempt finished by the completion check gets 80 XP exactly once; a paused one gets none", async () => {
+    const id = await room();
+    await startTracked(id, "s4");
+    await startTracked(id, "s6");
+    // s6's app went to the background 25 s before closing and never came back: the check at close pauses it.
+    const away = Date.now() - 25_000;
+    await m.TestAttempt.updateOne({ testId: id, studentId: ids.s6 }, {
+      "visibility.lastSeenAt": new Date(away), "visibility.interruption": { id: randomUUID(), reason: "app-background", startedAt: new Date(away) },
+    });
+    await m.TestRoom.updateOne({ _id: id }, { closesAt: new Date(Date.now() - 1000) });
+    assert.equal(await m.completion.completionReleased({ _id: id }), false);
+    assert.equal(await m.completion.completionReleased({ _id: id }), false);
+    assert.ok((await stored(id, "s4")).submittedAt);
+    assert.equal((await testXp(id, "s4"))?.xp, 80);
+    assert.equal(await xpEvents(id, "s4"), 1);
+    const paused = await stored(id, "s6");
+    assert.ok(paused.suspendedAt);
+    assert.equal(paused.submittedAt, null);
+    assert.equal(await xpEvents(id, "s6"), 0);
+  });
+
+  test("a visibility report after time is up finishes the attempt and gives 80 XP exactly once", async () => {
+    const id = await room();
+    await startTracked(id, "s3");
+    await m.TestRoom.updateOne({ _id: id }, { closesAt: new Date(Date.now() - 1000) });
+    const first = await report(id, "s3", packet({ sequence: 2 }));
+    assert.equal(first.attempt.state, "submitted");
+    assert.equal((await testXp(id, "s3"))?.xp, 80);
+    await report(id, "s3", packet({ sequence: 3 }));
+    assert.equal(await xpEvents(id, "s3"), 1);
+  });
+
+  test("a visibility report after the student's own time runs out (test still open) gives 80 XP exactly once", async () => {
+    const id = await room();
+    await startTracked(id, "s2");
+    // 60-minute test, started 61 minutes ago; the room stays open for hours.
+    await m.TestAttempt.updateOne({ testId: id, studentId: ids.s2 }, { startedAt: new Date(Date.now() - 61 * MIN) });
+    const first = await report(id, "s2", packet({ sequence: 2 }));
+    assert.equal(first.attempt.state, "submitted");
+    assert.equal((await testXp(id, "s2"))?.xp, 80);
+    await report(id, "s2", packet({ sequence: 3 }));
+    assert.equal(await xpEvents(id, "s2"), 1);
   });
 });
 
