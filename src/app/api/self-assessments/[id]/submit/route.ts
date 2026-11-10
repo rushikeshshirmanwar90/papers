@@ -1,4 +1,6 @@
 import { requireUser } from "@/lib/auth";
+import { studentOf } from "@/lib/engagement/award";
+import { selfAssessmentEngagement } from "@/lib/engagement/rules";
 import { readJson, route } from "@/lib/http";
 import { assessmentFor, detailOf, finalize, mergeAnswers } from "@/lib/self-assessment";
 
@@ -22,5 +24,7 @@ export const POST = route<{ params: { id: string } }>(async (req, { params }) =>
     }
     await finalize(a);
   }
-  return detailOf(a);
+  // After the save; never throws (null when gamification fails).
+  const engagement = await selfAssessmentEngagement(studentOf(session), a);
+  return { ...detailOf(a), engagement };
 });

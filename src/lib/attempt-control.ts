@@ -5,6 +5,7 @@ import { deadlineOf, finalizeLocked } from '@/lib/attempts';
 import { mustEdit } from '@/lib/tests';
 import type { TestRoomDoc } from '@/models/TestRoom';
 import { withTestLock } from '@/lib/test-lock';
+import { testEngagements, testEngagement } from '@/lib/engagement/rules';
 import TestAttempt, { type TestAttemptDoc } from '@/models/TestAttempt';
 
 export const MAX_EXTENSION_MINUTES = 120;
@@ -48,17 +49,24 @@ export async function controlAttempt(test: TestRoomDoc, actor: Session, body: Re
     return action === 'finalize' ? finalizeLocked(fresh, changed, session, now, true) : changed;
   });
   if (result instanceof HttpError) throw result;
+  // Teacher finalize: participation XP after the lock (idempotent, never throws).
+  if (action === 'finalize' && result.submittedAt) await testEngagement(result);
   return result;
 }
 
 export async function endTest(test: TestRoomDoc) {
-  return withTestLock(test, async (fresh, session) => {
+  let finished: TestAttemptDoc[] = [];
+  const ended = await withTestLock(test, async (fresh, session) => {
+    finished = []; // the lock may retry this callback
     if (fresh.manuallyEndedAt) return fresh;
     fresh.manuallyEndedAt = new Date();
     fresh.closesAt = fresh.manuallyEndedAt;
     await fresh.save({ session });
     const attempts = await TestAttempt.find({ testId: fresh._id, tuitionId: fresh.tuitionId, submittedAt: null }).session(session) as TestAttemptDoc[];
-    for (const attempt of attempts) await finalizeLocked(fresh, attempt, session, fresh.manuallyEndedAt, true);
+    for (const attempt of attempts) finished.push(await finalizeLocked(fresh, attempt, session, fresh.manuallyEndedAt, true));
     return fresh;
   });
+  // Participation XP for everyone this finished, after the lock (idempotent, never throws).
+  await testEngagements(finished.filter(a => a.submittedAt));
+  return ended;
 }

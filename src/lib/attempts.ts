@@ -4,6 +4,7 @@ import { claimStart, requireTestAccess } from '@/lib/test-access';
 import type { ClientSession } from "mongoose";
 import { withTestLock } from "@/lib/test-lock";
 import { completionReleased } from "@/lib/test-completion";
+import { testEngagement } from "@/lib/engagement/rules";
 import type { Session } from "@/lib/auth";
 import { HttpError } from "@/lib/http";
 import { cleanAnswer, scoreAnswers } from "@/lib/marking";
@@ -55,7 +56,7 @@ export async function finalizeLocked(test: TestRoomDoc, current: TestAttemptDoc,
 }
 
 export async function finalize(test: TestRoomDoc, attempt: TestAttemptDoc, now = new Date(), expiryOnly = false, expectedResumeVersion = attempt.resumeVersion ?? 0): Promise<TestAttemptDoc> {
-  return withTestLock(test, async (fresh, session) => {
+  const done = await withTestLock(test, async (fresh, session) => {
     const read = await TestAttempt.findById(attempt._id).session(session) as TestAttemptDoc;
     const current = await reconcileVisibilityLocked(fresh, read, session, now);
     if (!expiryOnly && (current.resumeVersion ?? 0) !== expectedResumeVersion) return current;
@@ -64,6 +65,9 @@ export async function finalize(test: TestRoomDoc, attempt: TestAttemptDoc, now =
     if (expiryOnly && !expired(fresh, current, now.getTime())) return current;
     return finalizeLocked(fresh, current, session, now, !!fresh.manuallyEndedAt);
   });
+  // Participation XP once the lock is released and the attempt is saved (idempotent, never throws).
+  if (done.submittedAt && !attempt.submittedAt) await testEngagement(done);
+  return done;
 }
 
 /** The student's attempt at the test, finished first if its time ran out while they were away. */
@@ -177,7 +181,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export async function recordEvent(test: TestRoomDoc, attempt: TestAttemptDoc, body: Record<string, unknown>): Promise<TestAttemptDoc> {
   const awayMs = body.awayMs;
   if (body.type !== "away" || typeof awayMs !== "number" || !Number.isFinite(awayMs) || awayMs < 0) throw new HttpError(400, "That isn't a valid event.");
-  return withTestLock(test, async (fresh, session) => {
+  const out = await withTestLock(test, async (fresh, session) => {
     const read = await TestAttempt.findById(attempt._id).session(session) as TestAttemptDoc;
     let current = await reconcileVisibilityLocked(fresh, read, session);
     if (current.submittedAt || current.suspendedAt) return current;
@@ -199,6 +203,9 @@ export async function recordEvent(test: TestRoomDoc, attempt: TestAttemptDoc, bo
       $inc: { rev: 1 },
     }, { returnDocument: 'after', session }) as TestAttemptDoc;
   });
+  // An away report can finish the attempt (time up): XP after the lock (idempotent, never throws).
+  if (out?.submittedAt && !attempt.submittedAt) await testEngagement(out);
+  return out;
 }
 
 /** What the student sees of their attempt. */

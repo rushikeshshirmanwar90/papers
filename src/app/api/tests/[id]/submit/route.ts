@@ -1,6 +1,7 @@
 import { requireTestAccess } from '@/lib/test-access';
 import { requireUser } from "@/lib/auth";
 import { AttemptClosedError, attemptOut, currentAttempt, finalize, questionsFor, resultsReleased, saveAnswers } from "@/lib/attempts";
+import { testEngagement } from "@/lib/engagement/rules";
 import { HttpError, readJson, route } from "@/lib/http";
 import { completionReleased } from '@/lib/test-completion';
 import { testFor } from "@/lib/tests";
@@ -36,5 +37,8 @@ export const POST = route<{ params: { id: string } }>(async (req, { params }) =>
   }
   // The last extended student finishing completes the test: settle suspensions now.
   if (test.closesAt.getTime() <= Date.now()) await completionReleased(test);
-  return { attempt: await attemptOut(test, attempt), questions: questionsFor(test, (await resultsReleased(test))) };
+  // Outside every test lock. finalize() has already awarded; this repeat is idempotent and
+  // returns the student's progress (null when gamification fails).
+  const engagement = await testEngagement(attempt);
+  return { attempt: await attemptOut(test, attempt), questions: questionsFor(test, (await resultsReleased(test))), engagement };
 });

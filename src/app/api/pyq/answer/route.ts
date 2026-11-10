@@ -1,4 +1,6 @@
 import { requireUser } from "@/lib/auth";
+import { studentOf } from "@/lib/engagement/award";
+import { priorPractice, practiceEngagement } from "@/lib/engagement/rules";
 import { HttpError, isObjectId, notFound, readJson, route } from "@/lib/http";
 import { cleanAnswer, isCorrect } from "@/lib/marking";
 import { practiceBankOf, pyqBankFilter } from "@/lib/pyq";
@@ -23,8 +25,8 @@ export const POST = route(async (req) => {
   const bank = practiceBankOf(session.user);
   if (!bank || !isObjectId(body.questionId)) throw notFound("This question");
   const q = await Question.findOne({ _id: body.questionId, ...pyqBankFilter(bank) })
-    .select("subject standard chapter topic answerType correctAnswer explanation explanationDiagramUrls")
-    .lean<{ subject: string; standard: string; chapter: string; topic: string; answerType: string; correctAnswer: string; explanation: string; explanationDiagramUrls: string[] }>();
+    .select("subject standard chapter topic difficulty answerType correctAnswer explanation explanationDiagramUrls")
+    .lean<{ _id: unknown; subject: string; standard: string; chapter: string; topic: string; difficulty?: string; answerType: string; correctAnswer: string; explanation: string; explanationDiagramUrls: string[] }>();
   if (!q) throw notFound("This question");
 
   const selected = cleanAnswer(q, body.selected);
@@ -33,6 +35,8 @@ export const POST = route(async (req) => {
   if (correct === null) throw new HttpError(400, "This question has no answer key to check against.");
 
   const saved = session.role === "student";
+  // Read before the save overwrites it: tells a first try from a fixed mistake (engagement only).
+  const prev = saved ? await priorPractice(session.user._id, body.questionId) : undefined;
   if (saved) {
     await PracticeAnswer.updateOne(
       { studentId: session.user._id, questionId: body.questionId },
@@ -51,5 +55,7 @@ export const POST = route(async (req) => {
       { upsert: true }
     );
   }
-  return { correct, selected, saved, correctAnswer: q.correctAnswer, explanation: q.explanation, explanationDiagramUrls: q.explanationDiagramUrls ?? [] };
+  // XP only after the answer is saved; never throws (null when gamification fails).
+  const engagement = saved ? await practiceEngagement(studentOf(session), q, { correct, prev }) : undefined;
+  return { correct, selected, saved, correctAnswer: q.correctAnswer, explanation: q.explanation, explanationDiagramUrls: q.explanationDiagramUrls ?? [], ...(saved ? { engagement } : {}) };
 });

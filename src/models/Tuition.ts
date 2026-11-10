@@ -7,6 +7,8 @@ export interface TuitionDoc extends Document {
   phone: string;
   email: string;
   active: boolean;
+  /** Student engagement (XP, goals, streaks). Missing on older tuitions: treat as on. */
+  engagement?: { enabled: boolean };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,6 +20,7 @@ const TuitionSchema = new Schema<TuitionDoc>(
     phone: { type: String, default: "", trim: true },
     email: { type: String, default: "", trim: true, lowercase: true },
     active: { type: Boolean, default: true },
+    engagement: { enabled: { type: Boolean, default: true } },
   },
   { timestamps: true }
 );

@@ -5,6 +5,7 @@ import type { TestRoomDoc } from '@/models/TestRoom';
 import type { ClientSession } from 'mongoose';
 import { withTestLock } from '@/lib/test-lock';
 import { finalizeLocked } from '@/lib/attempts';
+import { testEngagements } from '@/lib/engagement/rules';
 
 /** Only individual continuations can outlive normal closing. Before closing a
  * suspension awaits the teacher; after closing it is finalized once no active
@@ -22,9 +23,11 @@ export async function hydrateCompletion(test: TestRoomDoc) {
 }
 
 export async function completionReleased(test: { _id: unknown }) {
+  let finished: TestAttemptDoc[] = [];
   // The room lock is also used by extension/suspension. An in-flight extension
   // cannot commit after a reader has decided to release the answer key.
-  return withTestLock(test as Pick<TestRoomDoc, '_id'>, async (fresh, session) => {
+  const released = await withTestLock(test as Pick<TestRoomDoc, '_id'>, async (fresh, session) => {
+    finished = []; // the lock may retry this callback
     if (fresh.opensAt.getTime() > Date.now() || fresh.closesAt?.getTime() > Date.now()) return false;
     if (!fresh.manuallyEndedAt) {
       const watching = await TestAttempt.find({ testId: fresh._id, tuitionId: fresh.tuitionId, submittedAt: null, suspendedAt: null, visibility: { $ne: null } }).session(session) as TestAttemptDoc[];
@@ -35,9 +38,12 @@ export async function completionReleased(test: { _id: unknown }) {
     // suspensions are submitted with their saved answers (idempotent under the lock).
     if (await continuationOf(fresh._id, new Date(), session, false)) return false;
     const suspended = await TestAttempt.find({ testId: fresh._id, tuitionId: fresh.tuitionId, submittedAt: null, suspendedAt: { $ne: null } }).session(session) as TestAttemptDoc[];
-    for (const attempt of suspended) await finalizeLocked(fresh, attempt, session, new Date(), true);
+    for (const attempt of suspended) finished.push(await finalizeLocked(fresh, attempt, session, new Date(), true));
     return true;
   });
+  // Participation XP for suspended attempts this settled, after the lock (idempotent, never throws).
+  if (finished.length) await testEngagements(finished.filter(a => a.submittedAt));
+  return released;
 }
 
 /** Batch result/analysis callers use this too, so a peer's pending attempt
