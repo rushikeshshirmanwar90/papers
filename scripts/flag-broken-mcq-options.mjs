@@ -13,7 +13,8 @@
 //   reviewFlags: { options: [reasons…], flaggedAt }
 // on those documents (matched by _id and an unchanged option set, so nothing
 // edited meanwhile is touched). Undo: $unset reviewFlags on the backed-up ids.
-// Needs MONGODB_URI (and MONGODB_DB, else "pcmb", as src/lib/db.ts).
+// Needs MONGODB_URI (and MONGODB_DB, else "pcmb", as src/lib/db.ts). The rule is the same as
+// src/lib/question-review.ts (optionReviewReasons), which the app uses to clear a flag on edit.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { MongoClient } from "mongodb";
 
@@ -64,6 +65,8 @@ try {
     console.log("  before:", JSON.stringify({ options: opts, reviewFlags: q.reviewFlags ?? null }));
     console.log("  after: ", JSON.stringify({ options: opts, reviewFlags: flagsOf(reasons) }), "(options unchanged)");
   }
+  console.log(`\nAll ${broken.length} (id · subject · chapter · key · reasons):`);
+  for (const { q, reasons } of broken) console.log(`  ${q._id} · ${q.subject} · ${q.chapter} · key ${q.correctAnswer || "–"} · ${reasons.join(", ")}`);
   if (!apply) {
     console.log("\nNothing written. Re-run with --apply to back up and flag.");
   } else {
