@@ -68,7 +68,7 @@ export const FIT_SCRIPT = String.raw`(() => {
     const cs = getComputedStyle(el);
     return el.clientWidth - num(cs.paddingLeft) - num(cs.paddingRight);
   };
-  const HOLDER = '.stem, .option, .solution-body, .solution-head, .source, .key > div, .section-title span, .field span, .heading, .institute';
+  const HOLDER = '.stem, .option, .solution-body, .solution-head, .source, .key > div, .section-title span, .subject-name, .subject-count, .field span, .heading, .institute';
   const holderOf = (el) => el.closest(HOLDER);
   const where = (el) => {
     const part = el.closest('.part');

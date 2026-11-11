@@ -1,4 +1,4 @@
-import { escapeHtml, fontFaces, fontStack, richText, type EmbeddedFigures, type PaperQuestion, type QuestionPaper } from "../questionPaper/html";
+import { arrangeQuestions, escapeHtml, fontFaces, fontStack, richText, subjectLabels, type EmbeddedFigures, type PaperQuestion, type QuestionPaper } from "../questionPaper/html";
 import {
   DEFAULT_SMART_SLIDE_SETTINGS,
   MIN_FONT_PX,
@@ -94,7 +94,10 @@ function fitConfig(settings: SmartSlideSettings) {
   };
 }
 
-export function smartSlidesHtml(paper: QuestionPaper, embedded: EmbeddedFigures): string {
+export function smartSlidesHtml(given: QuestionPaper, embedded: EmbeddedFigures): string {
+  // Subjects in the exam paper's order, so the slides number the questions the same way.
+  const paper = arrangeQuestions(given);
+  const subjects = subjectLabels(paper.questions);
   const settings = paper.slides ?? DEFAULT_SMART_SLIDE_SETTINGS;
   const g = slideGeometry(settings);
   const colors = SLIDE_THEMES[settings.theme];
@@ -108,12 +111,13 @@ export function smartSlidesHtml(paper: QuestionPaper, embedded: EmbeddedFigures)
   const slides = paper.questions.map((q, i) => {
     const number = i + 1;
     const keys = optionsOf(q);
+    const subject = subjects[i];
     const figureColumn = q.diagramUrls.length
       ? `<div class="fig" style="width:${figureWidth}px">${figures(q.diagramUrls, embedded, "q-fig", FIGURE_PX)}</div>`
       : "";
     return `<section class="slide q" data-q="${number}" data-layout="${settings.mcqLayout}" data-options="${keys.length}">
   <div class="qa" style="height:${g.regionHeight}px">
-    <div class="head"><span class="qno">Q${number}</span>${title ? `<span class="title">${escapeHtml(title)}</span>` : ""}${
+    <div class="head"><span class="qno">Q${number}</span>${title ? `<span class="title">${escapeHtml(title)}</span>` : ""}${subject ? `<span class="subj">${escapeHtml(subject.toUpperCase())}</span>` : ""}${
       institute ? `<span class="inst">${escapeHtml(institute)}</span>` : ""
     }</div>
     <div class="body" style="font-size:${g.fontPx}px;height:${g.contentHeight}px">
@@ -146,6 +150,9 @@ export function smartSlidesHtml(paper: QuestionPaper, embedded: EmbeddedFigures)
   .head { display: flex; align-items: baseline; gap: 10px; height: ${SLIDE.headerHeight}px; margin-bottom: ${SLIDE.headerGap}px; font-size: ${SLIDE.headerFont}px; line-height: ${SLIDE.headerHeight}px; color: ${colors.muted}; white-space: nowrap; }
   .qno { font-weight: 700; color: ${colors.accent}; }
   .title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  /* A small subject label; it keeps its full width while the title gives way. */
+  .subj { margin-left: auto; flex: none; font-size: 0.85em; font-weight: 700; letter-spacing: 0.06em; color: ${colors.muted}; }
+  .subj + .inst { margin-left: 0; }
   .inst { margin-left: auto; font-weight: 700; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 50%; }
   .body { display: flex; gap: ${SLIDE.figureGap}px; overflow: hidden; line-height: ${SLIDE.lineHeight}; }
   .text { flex: 1; min-width: 0; align-self: flex-start; }
