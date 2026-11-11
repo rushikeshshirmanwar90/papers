@@ -1,4 +1,5 @@
 import { hasManagedAccess, accessOf, audienceBatches, mustBeBankQuestions, rosterStudents, sharedScope } from '@/lib/test-access';
+import { readTestSubjects, validateSubjectQuestions } from '@/lib/test-access';
 import { requireUser } from "@/lib/auth";
 import { badRequest, HttpError, isObjectId, readJson, route, text } from "@/lib/http";
 import { batchIdsOf } from "@/lib/members";
@@ -80,14 +81,16 @@ export const POST = route(async (req) => {
   const batch = await batchForTest(session, Array.isArray(body.batchIds) ? body.batchIds[0] : body.batchId);
   // Only JEE and NEET have questions; other programs never borrow theirs.
   if (!questionBankOf(programOf(batch))) throw badRequest(`There is no question bank for ${batch.name}'s program yet, so a test can't be set for it.`);
-  const subject = text(body, "subject", { required: true, max: 40, label: "a subject" })!;
+  const subjects = readTestSubjects(body);
+  const subject = subjects[0];
   if (!(SUBJECTS as readonly string[]).includes(subject)) throw badRequest("Pick one of the batch's subjects.");
   if (!batch.subjects.includes(subject as SchoolSubject)) throw badRequest(`${subject} isn't one of ${batch.name}'s subjects.`);
 
   const batches = await audienceBatches(session, body.batchIds ?? [body.batchId], subject);
   const scope = sharedScope(batches, subject, text(body, "standard", { max: 10 }) ?? "");
   const questions = readQuestions(body.questions);
-  await mustBeBankQuestions(scope, questions);
+  if (body.subjects === undefined) await mustBeBankQuestions(scope, questions);
+  else await validateSubjectQuestions(batches, subjects, scope.standard, questions, body.subjectTargets);
   const candidates = await rosterStudents(session.tuitionId, batches.map(b => b._id));
   if (body.audienceMode !== undefined && !['all', 'selected'].includes(String(body.audienceMode))) throw badRequest('Choose a valid audience mode.');
   const audienceMode = body.audienceMode === 'selected' ? 'selected' : 'all';
@@ -116,7 +119,7 @@ export const POST = route(async (req) => {
     batchId: batch._id,
     teacherId: session.user._id,
     title: text(body, "title", { required: true, max: 120, label: "a test name" }),
-    subject,
+    subject: subjects.join(', '),
     standard: scope.standard,
     questions,
     ...readMarking(body),
