@@ -92,17 +92,26 @@ export async function coverageFor(
     .select("batchId subject standard chapter topic")
     .lean<{ batchId: Types.ObjectId; subject: SchoolSubject; standard: string; chapter: string; topic: string }[]>();
 
+  // Grouped once by batch and subject, rather than scanned again for each of them.
+  const marked = new Map<string, typeof progress>();
+  for (const p of progress) {
+    const at = `${String(p.batchId)}|${p.subject}`;
+    const list = marked.get(at);
+    if (list) list.push(p);
+    else marked.set(at, [p]);
+  }
+
   const result = new Map<string, Record<string, { covered: number; total: number; percent: number }>>();
-  for (const batch of batches) {
+  // Every batch's subject syllabuses load side by side, not one batch after another.
+  const allSyllabuses = await Promise.all(batches.map((batch) => Promise.all(batch.subjects.map((subject) => syllabusFor(subject, standardsOf(batch.standard))))));
+  for (const [b, batch] of batches.entries()) {
     const perSubject: Record<string, { covered: number; total: number; percent: number }> = {};
-    // The subjects' syllabuses load side by side, not one after another.
-    const syllabuses = await Promise.all(batch.subjects.map((subject) => syllabusFor(subject, standardsOf(batch.standard))));
+    const syllabuses = allSyllabuses[b];
     for (const [i, subject] of batch.subjects.entries()) {
       const syllabus = syllabuses[i];
       const units = new Set(syllabus.flatMap((c) => c.topics.map((t) => unitKey(c.standard, c.chapter, t))));
       const covered = new Set(
-        progress
-          .filter((p) => String(p.batchId) === String(batch._id) && p.subject === subject)
+        (marked.get(`${String(batch._id)}|${subject}`) ?? [])
           .map((p) => unitKey(p.standard, p.chapter, p.topic))
           .filter((k) => units.has(k))
       );

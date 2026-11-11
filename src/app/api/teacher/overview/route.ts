@@ -25,9 +25,10 @@ export const GET = route(async (req) => {
     teacherNames(session.tuitionId),
     TimetableEntry.find({ tuitionId: session.tuitionId, teacherId: me }).sort({ day: 1, start: 1 }) as Promise<TimetableEntryDoc[]>,
   ]);
-  const coverage = await coverageFor(batches);
+  // Coverage and the timetable's names load side by side. Today's classes are a subset of the
+  // week, so they reuse its answer instead of looking the same batches and teachers up again.
+  const [coverage, week] = await Promise.all([coverageFor(batches), entriesOut(session, myClasses)]);
   const { day } = todayInIndia();
-  const today = myClasses.filter((c) => c.day === day);
 
   return {
     totals: {
@@ -41,7 +42,7 @@ export const GET = route(async (req) => {
       mySubjects: b.teachers.filter((t) => String(t.teacherId) === session.userId).map((t) => t.subject),
       coverage: coverage.get(String(b._id)) ?? {},
     })),
-    today: await entriesOut(session, today),
-    week: await entriesOut(session, myClasses),
+    today: week.filter((c) => c.day === day),
+    week,
   };
 });
