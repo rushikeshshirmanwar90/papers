@@ -391,3 +391,35 @@ describe("students and the last permitted start", () => {
     assert.equal(await bank(), bankDigest);
   });
 });
+
+// Selection refinement: answer-bearing discovery stays teacher-only; ongoing
+// student test payloads must never acquire the teacher preview's answer metadata.
+describe('teacher selection answer visibility', () => {
+  test('teacher discovery returns existing keys and solutions, while every bank selector rejects students', async () => {
+    const routes = await Promise.all([
+      import('@/app/api/make-pdf/questions/route'),
+      import('@/app/api/make-pdf/pick/route'),
+      import('@/app/api/make-pdf/options/route'),
+    ]);
+    const scope = { course: 'Competitive', standard: '11th', exam: 'JEE', subject: 'Physics', source: ['regular', 'pyq'] };
+    const body = await json(await routes[0].POST(req('POST', '/api/make-pdf/questions', 'teacher', scope), {}), 200);
+    assert.ok(body.questions.length > 0);
+    assert.equal(body.questions[0].correctAnswer, 'A');
+    assert.equal(body.questions[0].explanation, 'Solution One');
+    for (const route of routes) {
+      const denied = await json(await route.POST(req('POST', '/api/make-pdf/questions', 'student', { ...scope, count: 1 }), {}), 403);
+      assert.equal(denied.questions, undefined);
+      assert.ok(!JSON.stringify(denied).includes('Solution One'));
+    }
+  });
+  test('student GET and start hide keys, solutions and solution images during an ongoing test', async () => {
+    const { test: created } = await create(setup({ startNow: true, closesAt: iso(2 * HOUR) }));
+    const detail = await json(await m.testRoute.GET(req('GET', `/api/tests/${created.id}`, 'student'), { params: { id: created.id } }), 200);
+    const started = await json(await m.startRoute.POST(req('POST', `/api/tests/${created.id}/start`, 'student', {}), { params: { id: created.id } }), 200);
+    for (const payload of [detail, started]) {
+      const serialized = JSON.stringify(payload);
+      for (const name of ['correctAnswer', 'explanation', 'explanationDiagramUrls', 'Solution One']) assert.ok(!serialized.includes(name), `${name} leaked to student`);
+    }
+    assert.equal(await bank(), bankDigest);
+  });
+});

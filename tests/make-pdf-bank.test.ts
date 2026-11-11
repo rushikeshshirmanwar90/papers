@@ -186,6 +186,23 @@ describe("PYQs", () => {
 });
 
 describe("selection", () => {
+  test("multi-source union preserves regular semantics and scalar PYQ behavior", async () => {
+    assert.deepEqual((await found(comp({ source: ['regular', 'pyq'] }))).sort(), (await found(comp())).sort());
+    assert.deepEqual((await found(comp({ source: ['pyq'], years: ['2020', '2021'] }))).sort(), idsOf('physJee20', 'physJee21'));
+    assert.throws(() => comp({ source: ['regular', 'invented'] }));
+    assert.throws(() => comp({ source: [] }));
+  });
+  test("chapter/topic multi-values, literal search and random fill all use the entire eligible pool", async () => {
+    const scope = comp({ source: ['pyq'], chapters: ['Kinematics', 'Optics'], topics: ['Speed', 'Lenses'] });
+    assert.deepEqual((await found(scope)).sort(), idsOf('physJee20', 'physJee21'));
+    const page = await bank.pageOfQuestions(scope, 1, 1);
+    const fill = await bank.randomQuestions(scope, 1, [String(page.questions[0]._id)]);
+    assert.equal(fill.found, 1);
+    assert.notEqual(String(fill.questions[0]._id), String(page.questions[0]._id));
+    assert.deepEqual(await found(comp({ search: 'Optics', source: 'pyq' })), [ids.physJee21]);
+    assert.equal((await found(comp({ search: '.*' }))).length, 0);
+    assert.ok((await bank.randomQuestions(comp({ search: 'Optics', source: 'pyq' }), 5, [])).questions.every(q => q.chapter === 'Optics'));
+  });
   test("paging never returns more than asked and reports the real total", async () => {
     const scope = comp();
     const total = (await bank.scopeOptions(scope)).total;

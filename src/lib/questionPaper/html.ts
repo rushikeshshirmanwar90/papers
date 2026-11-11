@@ -14,6 +14,8 @@ import type { SmartSlideSettings } from "../smartSlides/layout";
 // The pcmb-paper app posts the picked questions and gets the PDF back.
 
 export interface PaperQuestion {
+  subject?: string;
+  topic?: string;
   questionText: string;
   optionA: string;
   optionB: string;
@@ -285,10 +287,99 @@ function sheetHeader(paper: QuestionPaper, part: Part): string {
   </header>`;
 }
 
+// ─── Subjects ──────────────────────────────────────────────────────────────
+
+/** The subject a question prints under: Botany and Zoology are Biology; "" when it has none. */
+const canonicalSubject = (name: string) => (name === "Botany" || name === "Zoology" ? "Biology" : name);
+const subjectName = (q: PaperQuestion) => canonicalSubject((q.subject ?? "").trim());
+
+/** What questions with no subject are called once a paper has more than one subject. */
+const OTHER_SUBJECT = "Other";
+
+interface SubjectGroup {
+  name: string;
+  questions: PaperQuestion[];
+  /** Position of its first question in the paper, from 0. */
+  start: number;
+}
+
+/**
+ * The questions grouped by subject, subjects in the order they first appear
+ * and each subject's questions in the order given. Every question is kept.
+ */
+function groupBySubject(questions: PaperQuestion[], listed = ""): { name: string; questions: PaperQuestion[] }[] {
+  const groups = new Map<string, { name: string; questions: PaperQuestion[] }>();
+  for (const question of questions) {
+    const name = subjectName(question);
+    const key = name.toLowerCase();
+    const group = groups.get(key) ?? { name, questions: [] };
+    group.questions.push(question);
+    groups.set(key, group);
+  }
+  return inListedOrder([...groups.values()], listed);
+}
+
+/**
+ * Subjects in the order the request lists them (its "Physics, Chemistry" text,
+ * which the app writes in the teacher's order). A subject the list doesn't
+ * name, or no list at all, keeps its first-appearance place after the named ones.
+ */
+function inListedOrder<T extends { name: string }>(groups: T[], listed: string): T[] {
+  // The app cuts a long list to "Physics, Chemistry +1 more" (or "5 subjects") to fit the header's
+  // 80 characters. That is display text, not an order: the questions' own order stands.
+  if (/\+\d+ more$|^\d+ subjects$/i.test(listed.trim())) return groups;
+  const names = listed.split(",").map((name) => canonicalSubject(name.trim()).toLowerCase()).filter(Boolean);
+  const rank = (group: T) => {
+    const at = names.indexOf(group.name.toLowerCase());
+    return at < 0 ? names.length : at;
+  };
+  return groups.map((group, index) => ({ group, index })).sort((a, b) => rank(a.group) - rank(b.group) || a.index - b.index).map((item) => item.group);
+}
+
+/**
+ * The paper with its questions in printed order. One subject (or none) keeps
+ * the order given; several are grouped so each subject is one run, which is
+ * the numbering the questions, the answer key and the solutions all share.
+ */
+export function arrangeQuestions(paper: QuestionPaper): QuestionPaper {
+  const groups = groupBySubject(paper.questions, paper.subject);
+  if (groups.length < 2) return paper;
+  return { ...paper, questions: groups.flatMap((group) => group.questions) };
+}
+
+/**
+ * The subject each question prints under, for questions already in printed
+ * order: "" with one subject or none, and "Other" for a question with no
+ * subject once the paper has several. Shared with the Smart PDF.
+ */
+export function subjectLabels(questions: PaperQuestion[]): string[] {
+  const names = questions.map(subjectName);
+  const several = new Set(names.map((name) => name.toLowerCase())).size > 1;
+  return names.map((name) => name || (several ? OTHER_SUBJECT : ""));
+}
+
+/** The subject groups of a paper that has more than one subject (after arrangeQuestions); null for one. */
+function subjectGroups(paper: QuestionPaper): SubjectGroup[] | null {
+  const groups = groupBySubject(paper.questions, paper.subject);
+  if (groups.length < 2) return null;
+  let start = 0;
+  return groups.map((group) => {
+    const placed = { name: group.name || OTHER_SUBJECT, questions: group.questions, start };
+    start += group.questions.length;
+    return placed;
+  });
+}
+
+const subjectHeading = (group: SubjectGroup) =>
+  `<div class="subject-title"><span class="subject-name">${escapeHtml(group.name.toUpperCase())}</span><span class="subject-count">${group.questions.length} ${
+    group.questions.length === 1 ? "Question" : "Questions"
+  }</span></div>`;
+
 // ─── Sections ──────────────────────────────────────────────────────────────
 
 interface Section {
-  kind: "MCQ" | "Numerical";
+  /** Missing for a subject's answer table, which mixes kinds. */
+  kind?: "MCQ" | "Numerical";
   /** "Physics - Section A", without its kind. */
   title: string;
   /** Position of its first question in the paper, from 0. */
@@ -302,14 +393,17 @@ interface Section {
  */
 function sectionsOf(paper: QuestionPaper): Section[] {
   const sections: Section[] = [];
+  const subjectOf = (q: PaperQuestion) => q.subject === 'Botany' || q.subject === 'Zoology' ? 'Biology' : q.subject || paper.subject;
   paper.questions.forEach((question, index) => {
     const kind = isNumerical(question) ? "Numerical" : "MCQ";
     const last = sections[sections.length - 1];
-    if (last?.kind === kind) return void last.questions.push(question);
+    const subject = subjectOf(question);
+    const previousSubject = last ? subjectOf(last.questions[0]) : '';
+    if (last?.kind === kind && previousSubject === subject) return void last.questions.push(question);
     const letter = String.fromCharCode(65 + sections.length);
     sections.push({
       kind,
-      title: `${paper.subject ? `${paper.subject} - ` : ""}Section ${letter}`,
+      title: paper.questions.some(q => q.subject) ? `SECTION ${letter}${subject ? ` - ${subject.toUpperCase()}` : ''}` : `${paper.subject ? `${paper.subject} - ` : ""}Section ${letter}`,
       start: index,
       questions: [question],
     });
@@ -318,7 +412,7 @@ function sectionsOf(paper: QuestionPaper): Section[] {
 }
 
 const sectionHeading = (section: Section) =>
-  `<div class="section-title"><span>${escapeHtml(section.title)} <small>(${section.kind})</small></span></div>`;
+  `<div class="section-title"><span>${escapeHtml(section.title)}${section.kind ? ` <small>(${section.kind})</small>` : ""}</span></div>`;
 
 function answerTable(section: Section): string {
   const cells = section.questions.map((q, i) => ({ number: section.start + i + 1, answer: answerOf(q) }));
@@ -332,14 +426,24 @@ function answerTable(section: Section): string {
 
 // ─── The page ──────────────────────────────────────────────────────────────
 
-export function questionPaperHtml(paper: QuestionPaper, embedded: EmbeddedFigures): string {
+export function questionPaperHtml(given: QuestionPaper, embedded: EmbeddedFigures): string {
+  const paper = arrangeQuestions(given);
   const sections = sectionsOf(paper);
   const style = paper.style ?? normalizePaperStyle(undefined);
   const spacing = SPACING_VALUES[style.spacing];
   const fonts = fontStack(style.fontFamily);
 
+  const subjects = subjectGroups(paper);
   const columns = (showAnswer: boolean) =>
-    `<div class="columns">${sections
+    subjects
+      ? `<div class="columns">${subjects
+          .map(
+            (group) =>
+              subjectHeading(group) +
+              group.questions.map((q, i) => questionHtml(q, group.start + i + 1, embedded, showAnswer)).join("")
+          )
+          .join("")}</div>`
+      : `<div class="columns">${sections
       .map(
         (section) =>
           sectionHeading(section) +
@@ -351,7 +455,11 @@ export function questionPaperHtml(paper: QuestionPaper, embedded: EmbeddedFigure
   const add = (part: Part, body: string) =>
     parts.push(`<section class="part" data-part="${part.kind}">${sheetHeader(paper, part)}${body}</section>`);
   if (paper.questionPaper) add({ kind: "questions", label: "" }, columns(false));
-  if (paper.answerKey) add({ kind: "key", label: "Answer Key" }, `<div class="key-sheet">${sections.map(answerTable).join("")}</div>`);
+  // One table per subject (named by the subject, not Section A/B) when there are several.
+  const keySections: Section[] = subjects
+    ? subjects.map((group) => ({ title: group.name.toUpperCase(), start: group.start, questions: group.questions }))
+    : sections;
+  if (paper.answerKey) add({ kind: "key", label: "Answer Key" }, `<div class="key-sheet">${keySections.map(answerTable).join("")}</div>`);
   if (paper.solutions) add({ kind: "solutions", label: "Solutions" }, columns(true));
 
   return `<!DOCTYPE html>
@@ -395,6 +503,10 @@ export function questionPaperHtml(paper: QuestionPaper, embedded: EmbeddedFigure
   .section-title { display: flex; align-items: center; gap: 1.5mm; margin: 0 0 4mm; break-after: avoid; break-inside: avoid; }
   .section-title::before, .section-title::after { content: ""; flex: 1; border-bottom: 1.5px dotted #1a1a1a; min-width: 2mm; }
   .section-title span { padding: 1.2mm 3mm; border: 1px solid #1a1a1a; outline: 1px solid #1a1a1a; outline-offset: 1px; font-size: 12.5pt; font-weight: 700; color: #26283a; text-align: center; }
+  /* A multi-subject paper: a compact heading that stays with its subject's first question. */
+  .subject-title { display: flex; align-items: baseline; justify-content: space-between; gap: 3mm; margin: 2mm 0 3.5mm; padding-bottom: 1mm; border-bottom: 1px solid #1a1a1a; break-after: avoid; break-inside: avoid; }
+  .subject-name { font-size: 12.5pt; font-weight: 700; color: #26283a; overflow-wrap: anywhere; }
+  .subject-count { font-size: 8.5pt; color: #1a1a1a; white-space: nowrap; }
   .section-title small { font-size: 8.5pt; font-weight: 400; color: #1a1a1a; }
 
   .question { position: relative; padding-left: 8mm; margin: 0 0 ${spacing.questionGapMm}mm; }

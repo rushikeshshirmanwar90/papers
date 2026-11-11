@@ -416,3 +416,134 @@ describe("one mixed Smart PDF, printed and read back", { skip: !haveChrome && "C
     await task.destroy();
   });
 });
+
+// ─── Multi-subject Smart PDF ───────────────────────────────────────────────
+
+const inSubject = (subject: string | undefined, question: PaperQuestion): PaperQuestion => ({ ...question, subject });
+const subjectPaper = (questions: PaperQuestion[], subject: string, slides: SmartSlideSettings = DEFAULT_SMART_SLIDE_SETTINGS): QuestionPaper => ({ ...paperOf(questions, slides), subject });
+const slideNumbers = (html: string) => [...html.matchAll(/<span class="qno">Q(\d+)<\/span>/g)].map((m) => Number(m[1]));
+const slideSubjects = (html: string) => [...html.matchAll(/<section class="slide q"[\s\S]*?<\/section>/g)].map((m) => /<span class="subj">([^<]*)<\/span>/.exec(m[0])?.[1] ?? "");
+const stems = (html: string) => [...html.matchAll(/>(P|C|M|B|X)-(\d+) text</g)].map((m) => `${m[1]}${m[2]}`);
+const tagged = (subject: string | undefined, tag: string, count: number) =>
+  Array.from({ length: count }, (_, i) => inSubject(subject, q({ questionText: `${tag}-${i + 1} text`, optionA: "a", optionB: "b", optionC: "c", optionD: "d" })));
+
+describe("multi-subject slide HTML", () => {
+  test("three subjects: subject order, continuous numbers, a small label per slide, no divider slides", () => {
+    const questions = [...tagged("Physics", "P", 3), ...tagged("Chemistry", "C", 2), ...tagged("Mathematics", "M", 4)];
+    const html = smartSlidesHtml(subjectPaper(questions, "Physics, Chemistry, Mathematics"), new Map());
+    assert.deepEqual(slideNumbers(html), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert.deepEqual(slideSubjects(html), [...Array(3).fill("PHYSICS"), ...Array(2).fill("CHEMISTRY"), ...Array(4).fill("MATHEMATICS")]);
+    assert.equal((html.match(/<section class="slide/g) ?? []).length, 9, "one slide per question, no divider slides");
+    assert.doesNotMatch(html, />Section [A-Z]/i, "no section labels in the slides");
+  });
+
+  test("two subjects, unequal; interleaved input is grouped, each subject keeping its order, nothing lost or repeated", () => {
+    const questions = [...tagged("Chemistry", "C", 1), ...tagged("Physics", "P", 1), ...tagged("Chemistry", "C", 3).slice(1), ...tagged("Physics", "P", 2).slice(1)];
+    const html = smartSlidesHtml(subjectPaper(questions, "Chemistry, Physics"), new Map());
+    assert.deepEqual(stems(html), ["C1", "C2", "C3", "P1", "P2"]);
+    assert.deepEqual(slideSubjects(html), ["CHEMISTRY", "CHEMISTRY", "CHEMISTRY", "PHYSICS", "PHYSICS"]);
+  });
+
+  test("automatic order is first appearance; a manual list in the request sets the order", () => {
+    const questions = [...tagged("Physics", "P", 1), ...tagged("Chemistry", "C", 1), ...tagged("Mathematics", "M", 1)];
+    assert.deepEqual(slideSubjects(smartSlidesHtml(subjectPaper(questions, "Physics, Chemistry, Mathematics"), new Map())), ["PHYSICS", "CHEMISTRY", "MATHEMATICS"]);
+    assert.deepEqual(slideSubjects(smartSlidesHtml(subjectPaper(questions, ""), new Map())), ["PHYSICS", "CHEMISTRY", "MATHEMATICS"]);
+    const manual = smartSlidesHtml(subjectPaper(questions, "Mathematics, Chemistry"), new Map());
+    assert.deepEqual(slideSubjects(manual), ["MATHEMATICS", "CHEMISTRY", "PHYSICS"]);
+    assert.deepEqual(stems(manual), ["M1", "C1", "P1"]);
+  });
+
+  test("Botany and Zoology are labelled Biology; a question with no subject is kept, labelled Other, only when there are several", () => {
+    const mixedSubjects = [...tagged("Botany", "B", 1), ...tagged("Zoology", "X", 1), ...tagged("Physics", "P", 1), ...tagged(undefined, "C", 1)];
+    assert.deepEqual(slideSubjects(smartSlidesHtml(subjectPaper(mixedSubjects, "Botany, Zoology, Physics"), new Map())), ["BIOLOGY", "BIOLOGY", "PHYSICS", "OTHER"]);
+    assert.deepEqual(slideSubjects(smartSlidesHtml(subjectPaper(tagged(undefined, "P", 2), "Physics"), new Map())), ["", ""]);
+  });
+
+  test("a single subject keeps its slides as before, with its name as the small label", () => {
+    const html = smartSlidesHtml(subjectPaper(tagged("Physics", "P", 3), "Physics"), new Map());
+    assert.deepEqual(slideNumbers(html), [1, 2, 3]);
+    assert.deepEqual(slideSubjects(html), ["PHYSICS", "PHYSICS", "PHYSICS"]);
+    assert.match(html, /<span class="qno">Q1<\/span>/, "the number stays a label of its own");
+  });
+
+  test("the institute keeps its place at the right, after the subject; hiding it keeps the subject", () => {
+    const withBoth = smartSlidesHtml(subjectPaper(tagged("Physics", "P", 1), "Physics"), new Map());
+    assert.match(withBoth, /<span class="subj">PHYSICS<\/span><span class="inst">Sunrise Classes<\/span>/);
+    const hidden = smartSlidesHtml(subjectPaper(tagged("Physics", "P", 1), "Physics", { ...DEFAULT_SMART_SLIDE_SETTINGS, showInstitute: false }), new Map());
+    assert.doesNotMatch(hidden, /class="inst"/);
+    assert.match(hidden, /class="subj"/);
+  });
+});
+
+describe("multi-subject Smart PDF, printed and read back", { skip: !haveChrome && "Chrome isn't installed" }, () => {
+  const SAMPLES = process.env.PAPER_SAMPLES_DIR;
+  const save = async (name: string, pdf: Uint8Array) => {
+    if (!SAMPLES) return;
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(SAMPLES, { recursive: true });
+    writeFileSync(`${SAMPLES}/${name}`, pdf);
+  };
+
+  async function pageTexts(pdf: Uint8Array) {
+    const pdfjs = await loadPdfjs();
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(pdf), useSystemFonts: true }).promise;
+    const pages: string[][] = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const items = (await (await doc.getPage(n)).getTextContent()).items;
+      pages.push(items.filter((item): item is typeof item & { str: string } => "str" in item && !!item.str.trim()).map((item) => item.str.trim()));
+    }
+    return pages;
+  }
+
+  const mixed = () => [
+    inSubject("Physics", S.short), inSubject("Physics", S.long), inSubject("Physics", S.latex),
+    inSubject("Chemistry", S.medium), inSubject("Chemistry", S.squeezed), inSubject("Chemistry", S.diagram),
+    inSubject("Mathematics", S.wideEquation), inSubject("Mathematics", S.optionFigures), inSubject("Mathematics", S.numerical),
+  ];
+  const labels = ["PHYSICS", "PHYSICS", "PHYSICS", "CHEMISTRY", "CHEMISTRY", "CHEMISTRY", "MATHEMATICS", "MATHEMATICS", "MATHEMATICS"];
+
+  test("every question whole on one slide with its subject label; oversized ones get a blank solving slide; no divider slides", { timeout: 120000 }, async () => {
+    const settings = DEFAULT_SMART_SLIDE_SETTINGS;
+    const questions = mixed();
+    const { pdf, fit } = await renderSlides(smartSlidesHtml(subjectPaper(questions, "Physics, Chemistry, Mathematics"), FIGURES), settings, 100000);
+    assert.deepEqual(errorsOf(fit), []);
+    assert.ok(pdf);
+    await save("three-subjects-smart.pdf", pdf!);
+    const expected: { q: number; blank: boolean }[] = [];
+    for (const e of fit.plan) {
+      expected.push({ q: e.q, blank: false });
+      if (e.blankAfter) expected.push({ q: e.q, blank: true });
+    }
+    assert.equal(fit.plan.length, questions.length, "one planned slide per question");
+    assert.ok(fit.stats.blank >= 1, "the oversized question was followed by a blank solving slide");
+    const pages = await pageTexts(pdf!);
+    assert.equal(pages.length, expected.length, "only question slides and their solving slides");
+    pages.forEach((texts, n) => {
+      const want = expected[n];
+      if (want.blank) return assert.equal(texts.length, 0, `page ${n + 1} is blank`);
+      assert.ok(texts.includes(`Q${want.q}`), `page ${n + 1} is Q${want.q}`);
+      assert.ok(texts.includes(labels[want.q - 1]), `Q${want.q} is labelled ${labels[want.q - 1]}`);
+      for (const other of ["PHYSICS", "CHEMISTRY", "MATHEMATICS"].filter((name) => name !== labels[want.q - 1])) assert.ok(!texts.includes(other), `Q${want.q} carries only its own subject`);
+      const marks = texts.filter((t) => /^\([A-D]\)$/.test(t));
+      if (marks.length) assert.deepEqual([...marks].sort(), ["(A)", "(B)", "(C)", "(D)"], `Q${want.q}: all four options together`);
+    });
+  });
+
+  test("saved layout preferences still apply: another theme, area and options layout lay out the same questions", { timeout: 120000 }, async () => {
+    const settings: SmartSlideSettings = { ...DEFAULT_SMART_SLIDE_SETTINGS, theme: "white", questionAreaPct: 40, mcqLayout: "grid" };
+    const { pdf, fit } = await renderSlides(smartSlidesHtml(subjectPaper(mixed(), "Physics, Chemistry, Mathematics", settings), FIGURES), settings, 100000);
+    assert.deepEqual(errorsOf(fit), []);
+    await save("three-subjects-smart-white.pdf", pdf!);
+    assert.equal(fit.plan.length, 9);
+  });
+
+  test("two subjects print; a question too long for any slide is still refused, never dropped", { timeout: 120000 }, async () => {
+    const two = [inSubject("Physics", S.short), inSubject("Biology", S.medium)];
+    const ok = await renderSlides(smartSlidesHtml(subjectPaper(two, "Physics, Biology"), FIGURES), DEFAULT_SMART_SLIDE_SETTINGS, 100000);
+    assert.deepEqual(errorsOf(ok.fit), []);
+    await save("two-subjects-smart.pdf", ok.pdf!);
+    const refused = await measure([inSubject("Physics", S.short), inSubject("Chemistry", IMPOSSIBLE())]);
+    assert.ok(errorsOf(refused.fit).length > 0, "the oversized question is reported");
+    assert.equal(refused.pdf, null, "nothing printed");
+  });
+});
