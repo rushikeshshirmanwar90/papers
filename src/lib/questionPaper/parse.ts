@@ -35,6 +35,8 @@ function question(raw: unknown, index: number): PaperQuestion {
   if (!isRecord(raw)) throw new PaperRequestError(`${at} must be an object`);
   const options = isRecord(raw.optionDiagramUrls) ? raw.optionDiagramUrls : {};
   return {
+    subject: text(raw.subject, `${at}.subject`, 40),
+    topic: text(raw.topic, `${at}.topic`, 300),
     questionText: text(raw.questionText, `${at}.questionText`),
     optionA: text(raw.optionA, `${at}.optionA`),
     optionB: text(raw.optionB, `${at}.optionB`),

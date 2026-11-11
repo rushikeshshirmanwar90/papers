@@ -72,10 +72,11 @@ export interface BankScope {
   standard: string;
   exam: CompetitiveExam | null;
   subject: string;
-  source: QuestionSource;
+  source: QuestionSource | QuestionSource[];
   chapters: string[];
   topics: string[];
   years: string[];
+  search?: string;
 }
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -108,11 +109,13 @@ export function readScope(raw: Record<string, unknown>): BankScope {
     throw badRequest("Foundation has Mathematics and Science.");
   }
   const source = raw.source ?? "regular";
-  if (source !== "regular" && source !== "pyq") throw badRequest("source must be regular or pyq.");
-  if (source === "pyq" && course === "Foundation") throw badRequest("Foundation has no previous-year questions yet.");
+  const sources = Array.isArray(source) ? [...new Set(source)] : [source];
+  if (!sources.length || sources.some(s => s !== "regular" && s !== "pyq")) throw badRequest("source must be regular or pyq.");
+  if (sources.includes("pyq") && course === "Foundation") throw badRequest("Foundation has no previous-year questions yet.");
   const years = names(raw.years, "years");
   if (!years.every((year) => /^(19|20)\d{2}$/.test(year))) throw badRequest("years must be four-digit years.");
-  return { course, standard, exam, subject, source, chapters: names(raw.chapters, "chapters"), topics: names(raw.topics, "topics"), years };
+  if (raw.search !== undefined && (typeof raw.search !== "string" || raw.search.length > 300)) throw badRequest("Search must be at most 300 characters.");
+  return { course, standard, exam, subject, source: sources.length === 1 ? sources[0] as QuestionSource : sources as QuestionSource[], chapters: names(raw.chapters, "chapters"), topics: names(raw.topics, "topics"), years, ...(raw.search ? { search: String(raw.search).trim() } : {}) };
 }
 
 /**
@@ -130,7 +133,9 @@ export function scopeFilter(scope: BankScope, skip: { chapters?: boolean; topics
     subject: { $in: BANK_NAMES[scope.subject] ?? [scope.subject] },
     answerType: "MCQ",
   };
-  if (scope.source === "pyq" && scope.exam) {
+  // Regular already includes sourced questions. The union must keep that meaning.
+  const sources = Array.isArray(scope.source) ? scope.source : [scope.source];
+  if (!sources.includes("regular") && sources.includes("pyq") && scope.exam) {
     and.push({ source: { $regex: OWN[scope.exam], $options: "i" } });
     and.push({ source: { $not: new RegExp(OTHER, "i") } });
     and.push({ source: { $regex: YEAR } });
@@ -141,6 +146,10 @@ export function scopeFilter(scope: BankScope, skip: { chapters?: boolean; topics
   }
   if (!skip.chapters && scope.chapters.length) filter.chapter = { $in: scope.chapters.map(exactly) };
   if (!skip.topics && scope.topics.length) filter.topic = { $in: scope.topics.map(exactly) };
+  if (scope.search) {
+    const pattern = new RegExp(escapeRegex(scope.search), "i");
+    and.push({ $or: ["questionText", "chapter", "topic", "optionA", "optionB", "optionC", "optionD", "explanation", "source"].map(field => ({ [field]: pattern })) });
+  }
   if (and.length) filter.$and = and;
   return filter;
 }

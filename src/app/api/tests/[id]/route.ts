@@ -1,5 +1,6 @@
 import { endTest } from "@/lib/attempt-control";
 import { accessOf, hasManagedAccess, audienceBatches, batchesOfTest, sharedScope, mustBeBankQuestions } from '@/lib/test-access';
+import { readTestSubjects, validateSubjectQuestions } from '@/lib/test-access';
 import { withTestLock } from '@/lib/test-lock';
 import { Types } from "mongoose";
 import { requireUser } from "@/lib/auth";
@@ -100,10 +101,12 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
     if (statusOf(fresh) !== 'scheduled' || await TestAttempt.exists({ testId: fresh._id }).session(dbSession)) throw badRequest("This test has already opened or students have started, so it can't be edited.");
     if (body.title !== undefined) fresh.title = text(body, "title", { required: true, max: 120, label: "a test name" })!;
     if (body.questions !== undefined) {
-      const batches = await audienceBatches(session, batchesOfTest(fresh).map(String), fresh.subject);
-      const scope = sharedScope(batches, fresh.subject, fresh.standard);
+      const subjects = readTestSubjects({ subjects: fresh.subject.split(',').map(s => s.trim()) });
+      const batches = await audienceBatches(session, batchesOfTest(fresh).map(String), subjects[0]);
+      const scope = sharedScope(batches, subjects[0], fresh.standard);
       const questions = readQuestions(body.questions);
-      await mustBeBankQuestions(scope, questions);
+      if (subjects.length === 1) await mustBeBankQuestions(scope, questions);
+      else await validateSubjectQuestions(batches, subjects, fresh.standard, questions);
       fresh.set('questions', questions);
     }
     const marking = readMarking(body, fresh);

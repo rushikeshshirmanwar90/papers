@@ -1,7 +1,7 @@
 import type { Session } from '@/lib/auth';
 import { HttpError, isObjectId } from '@/lib/http';
 import { batchForTest } from '@/lib/teaching';
-import { programOf, questionBankOf, type SchoolSubject } from '@/lib/school';
+import { programOf, questionBankOf, SUBJECTS, type SchoolSubject } from '@/lib/school';
 import type { BatchDoc } from '@/models/Batch';
 import { verifyQuestions, type BankScope } from '@/lib/makePdfBank';
 import TestRoom, { type TestRoomDoc } from '@/models/TestRoom';
@@ -21,6 +21,33 @@ export async function audienceBatches(session: Session, raw: unknown, subject: s
     if (!questionBankOf(programOf(batch))) throw new HttpError(400, 'A selected batch has no question bank.');
     return batch;
   }));
+}
+
+/** Optional subjects keeps old single-subject clients compatible. No new bank fields. */
+export function readTestSubjects(body: Record<string, unknown>): string[] {
+  const values = body.subjects === undefined ? [body.subject] : body.subjects;
+  if (!Array.isArray(values) || !values.length || values.length > 4 || values.some(s => typeof s !== 'string' || !(SUBJECTS as readonly string[]).includes(s))) throw new HttpError(400, 'Choose valid subjects.');
+  if (new Set(values).size !== values.length) throw new HttpError(400, 'Choose each subject once.');
+  return values as string[];
+}
+
+export async function validateSubjectQuestions(batches: BatchDoc[], subjects: string[], standard: string, questions: { sourceId?: unknown; subject: string; answerType: string }[], targets?: unknown) {
+  const subjectOf = (name: string) => name === 'Botany' || name === 'Zoology' ? 'Biology' : name;
+  if (questions.some(q => !subjects.includes(subjectOf(q.subject)) || q.answerType !== 'MCQ')) throw new HttpError(400, 'Selected questions must be MCQs of the selected subjects.');
+  const ids = questions.map(q => q.sourceId ? String(q.sourceId) : '').filter(Boolean);
+  if (ids.length !== questions.length || ids.some(id => !isObjectId(id))) throw new HttpError(400, 'Choose questions from the existing question bank.');
+  if (new Set(ids).size !== ids.length) throw new HttpError(400, 'A question cannot be selected twice.');
+  for (const subject of subjects) {
+    if (batches.some(b => !b.subjects.includes(subject as SchoolSubject))) throw new HttpError(400, `${subject} is not permitted by every chosen batch.`);
+    await mustBeBankQuestions(sharedScope(batches, subject, standard), questions.filter(q => subjectOf(q.subject) === subject));
+  }
+  if (targets !== undefined) {
+    if (!Array.isArray(targets) || targets.length !== subjects.length) throw new HttpError(400, 'Review subject targets.');
+    for (const subject of subjects) {
+      const entries = targets.filter(t => t && t.subject === subject);
+      if (entries.length !== 1 || !Number.isInteger(entries[0].count) || entries[0].count < 0 || entries[0].count !== questions.filter(q => subjectOf(q.subject) === subject).length) throw new HttpError(400, `${subject} selection does not match its target.`);
+    }
+  }
 }
 /**
  * The question-bank scope the selected batches share (exam and class), or a 400 when they don't fit together.
