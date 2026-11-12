@@ -84,6 +84,22 @@ describe("pickQuestions", () => {
     assert.equal(count(questions, (q) => q.unit === "b"), 10);
   });
 
+  test("test levels: easy 50/40/10, medium 40/40/20, challenging 30/40/30", () => {
+    assert.deepEqual(MIX_SPLIT.easy, { Easy: 0.5, Medium: 0.4, Hard: 0.1 });
+    assert.deepEqual(MIX_SPLIT.medium, { Easy: 0.4, Medium: 0.4, Hard: 0.2 });
+    assert.deepEqual(MIX_SPLIT.challenging, { Easy: 0.3, Medium: 0.4, Hard: 0.3 });
+    for (const level of ["easy", "medium", "challenging"] as const) {
+      assert.deepEqual(splitFor(level, { answered: 40, correct: 4 }).split, MIX_SPLIT[level], `${level} is fixed, whatever the history`);
+    }
+    const expected = { easy: { Easy: 10, Medium: 8, Hard: 2 }, medium: { Easy: 8, Medium: 8, Hard: 4 }, challenging: { Easy: 6, Medium: 8, Hard: 6 } } as const;
+    for (const level of ["easy", "medium", "challenging"] as const) {
+      const { questions, plan } = pickQuestions({ pool: makePool({ a: plenty, b: plenty }), units: units("a", "b"), count: 20, split: MIX_SPLIT[level], smart: false, random: seededRandom(7) });
+      assert.equal(questions.length, 20, level);
+      assert.deepEqual(plan.byDifficulty, expected[level], level);
+      assert.equal(count(questions, (q) => q.difficulty === "Hard"), expected[level].Hard, level);
+    }
+  });
+
   test("a retake of 30 is 9 easy, 9 medium, 12 hard (30/30/40)", () => {
     assert.deepEqual(splitFor("retake", { answered: 40, correct: 8 }).split, MIX_SPLIT.retake);
     const { questions, plan } = pickQuestions({ pool: makePool({ a: plenty, b: plenty, c: plenty }), units: units("a", "b", "c"), count: 30, split: MIX_SPLIT.retake, smart: false, random: seededRandom(4) });

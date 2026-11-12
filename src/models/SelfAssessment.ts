@@ -26,7 +26,7 @@ export interface SelfAssessmentDoc extends Document {
   subjects?: string[];
   title: string;
   scope: AssessmentScope[];
-  /** smart | balanced | challenge | retake */
+  /** smart | balanced | challenge | retake | easy | medium | challenging */
   mix: string;
   /** Which questions it drew from: pyqs (past-year only; every older test) | all | others. */
   pool?: string;
