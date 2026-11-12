@@ -196,6 +196,17 @@ describe("students and teachers see the same timetable", () => {
     assert.ok(home.week.every((e: Entry) => e.teacher.id === ids.physics && e.mine));
   });
 
+  test("today's classes are the week's classes for today, built once", async () => {
+    const { todayInIndia } = await import("@/lib/teaching");
+    const home = await json(await m.teacherHome.GET(req("GET", "/api/teacher/overview", "physics"), {}), 200);
+    const { day } = todayInIndia();
+    assert.deepEqual(home.today, home.week.filter((e: Entry) => e.day === day));
+    assert.ok(home.week.every((e: Entry & { batch: { name: string } }) => e.batch.name), "batch names filled in for every class");
+    for (const b of home.batches) {
+      assert.deepEqual(Object.keys(b.coverage).sort(), [...b.subjects].sort(), "coverage for each of the batch's subjects");
+    }
+  });
+
   test("teachers can still add their own classes", async () => {
     const res = await add({ batchId: ids.neet, subject: "Physics", day: 6, start: "10:00", end: "11:00" }, 200, "physics");
     assert.equal(res.entry.teacher.id, ids.physics);

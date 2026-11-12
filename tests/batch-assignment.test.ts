@@ -234,6 +234,19 @@ describe("a batch's syllabus coverage on its own", () => {
     assert.equal(only.batch.id, batchId);
   });
 
+  test("several batches at once give each the same coverage as alone, and never mix them", async () => {
+    const { coverageFor } = await import("@/lib/syllabus");
+    const other = (await createBatch("Coverage B")).batch.id;
+    const docs = await m.Batch.find({ _id: { $in: [batchId, other] } });
+    const together = await coverageFor(docs);
+    for (const doc of docs) {
+      const alone = await coverageFor([doc]);
+      assert.deepEqual(together.get(String(doc._id)), alone.get(String(doc._id)));
+    }
+    assert.equal(together.get(batchId)?.Physics.covered, 1);
+    assert.equal(together.get(other)?.Physics.covered, 0, "B gets none of A's marked topics");
+  });
+
   test("it skips the students and carries nothing else of the batch", async () => {
     const full = await json(await get("", "owner"), 200);
     const only = await json(await get("?coverage=only", "owner"), 200);
