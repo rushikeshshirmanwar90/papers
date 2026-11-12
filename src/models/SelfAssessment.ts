@@ -10,7 +10,8 @@ export interface AssessmentScope {
 }
 
 /**
- * A test a student makes for themselves from past-year questions: they pick
+ * A test a student makes for themselves (past-year questions, the bank's other
+ * questions, or both, by its pool): they pick
  * chapters and topics, lib/assessment-pick.ts chooses the questions. Questions
  * are copied (like a teacher's test) so the result stays as it was taken.
  */
@@ -22,6 +23,8 @@ export interface SelfAssessmentDoc extends Document {
   scope: AssessmentScope[];
   /** smart | balanced | challenge | retake */
   mix: string;
+  /** Which questions it drew from: pyqs (past-year only; every older test) | all | others. */
+  pool?: string;
   /** The split the questions were chosen for, e.g. { Easy: 6, Medium: 10, Hard: 4 }. */
   plan: { Easy: number; Medium: number; Hard: number; fresh: number; requested: number };
   /** Why Smart chose its split: the student's accuracy in these topics before. */
@@ -90,6 +93,7 @@ const SelfAssessmentSchema = new Schema<SelfAssessmentDoc>(
       default: [],
     },
     mix: { type: String, default: "balanced" },
+    pool: { type: String, default: "pyqs" },
     plan: {
       Easy: { type: Number, default: 0 },
       Medium: { type: Number, default: 0 },

@@ -3,7 +3,7 @@ import type { Session } from "@/lib/auth";
 import { badRequest, HttpError, isObjectId, notFound, oneOf } from "@/lib/http";
 import { cleanAnswer, scoreAnswers } from "@/lib/marking";
 import { ANSWER_FIELDS, low, QUESTION_FIELDS } from "@/lib/practice";
-import { practiceBankOf, pyqFilter, readSubject } from "@/lib/pyq";
+import { poolFilter, practiceBankOf, QUESTION_POOLS, readSubject, type QuestionPool } from "@/lib/pyq";
 import { PROGRAM_INFO, programOf, STANDARDS, type Program, type QuestionBank, type SchoolSubject, type Track } from "@/lib/school";
 import { levelOf, schoolSubjectOf } from "@/lib/topic-stats";
 import {
@@ -56,6 +56,8 @@ export interface Setup {
   mix: Mix;
   durationMinutes: number | null;
   negativeMarking: boolean;
+  /** Which questions: past-year only (the default, what older apps get), both, or the others only. */
+  pool: QuestionPool;
   /** From the plan the student saw, so the test made matches it. */
   seed?: number;
 }
@@ -97,7 +99,9 @@ export function readSetup(body: Record<string, unknown>, user: { program?: Progr
     durationMinutes = d;
   }
   const seed = Number.isInteger(body.seed) && (body.seed as number) >= 0 && (body.seed as number) < 2 ** 31 ? (body.seed as number) : undefined;
-  return { bank, subject, scope, count, mix, durationMinutes, negativeMarking: body.negativeMarking !== false, seed };
+  // Not sent by older apps: past-year questions, as before.
+  const pool: QuestionPool = body.pool === undefined || body.pool === null ? "pyqs" : oneOf(body, "pool", QUESTION_POOLS, "which questions to use");
+  return { bank, subject, scope, count, mix, durationMinutes, negativeMarking: body.negativeMarking !== false, pool, seed };
 }
 
 const unitKey = (standard: string, chapter: string, topic: string) => `${standard}|${low(chapter)}|${low(topic)}`;
@@ -122,14 +126,14 @@ const cellCache = new Map<string, { at: number; cells: BankCell[] }>();
 /** Forgets the cached counts (for tests that change the bank). */
 export const clearAssessmentCache = () => cellCache.clear();
 
-/** The subject's PYQ counts by topic and difficulty in a bank (cached briefly, like topic practice). */
-async function bankCells(bank: QuestionBank, subject: SchoolSubject): Promise<BankCell[]> {
-  const key = `${bank}|${subject}`;
+/** The subject's question counts by topic and difficulty in a bank's pool (cached briefly, like topic practice). */
+async function bankCells(bank: QuestionBank, subject: SchoolSubject, pool: QuestionPool): Promise<BankCell[]> {
+  const key = `${bank}|${subject}|${pool}`;
   const hit = cellCache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.cells;
   const rows = await Question.aggregate<{ _id: { standard: string; chapter: string; topic: string | null; difficulty: string | null }; n: number }>([
     // The class first so the standard/subject/chapter/topic index is used.
-    { $match: { standard: { $in: [...STANDARDS] }, ...pyqFilter(bank, subject), ...MARKABLE, chapter: { $nin: ["", null] } } },
+    { $match: { $and: [{ standard: { $in: [...STANDARDS] } }, poolFilter(bank, subject, pool), MARKABLE, { chapter: { $nin: ["", null] } }] } },
     { $group: { _id: { standard: "$standard", chapter: "$chapter", topic: "$topic", difficulty: "$difficulty" }, n: { $sum: 1 } } },
   ]);
   const cells = rows.map((r) => ({
@@ -166,7 +170,7 @@ interface Seen {
  * practice, or shown in a recent self-assessment), and their record per topic.
  */
 async function bankFor(session: Session, setup: Setup) {
-  const all = await bankCells(setup.bank, setup.subject);
+  const all = await bankCells(setup.bank, setup.subject, setup.pool);
 
   // Each picked chapter's topics, matched to the bank's names (trimmed, any case).
   const units = new Map<string, UnitInfo>();
@@ -300,7 +304,7 @@ async function questionsFor(session: Session, setup: Setup, planned: Awaited<Ret
     topic: c.topic === "" ? { $in: ["", null] } : c.topic,
     difficulty: c.rawDifficulty === "" ? { $in: ["", null] } : c.rawDifficulty,
   }));
-  const rows = await Question.find({ ...pyqFilter(setup.bank, setup.subject), ...MARKABLE, $or: clauses })
+  const rows = await Question.find({ $and: [poolFilter(setup.bank, setup.subject, setup.pool), MARKABLE, { $or: clauses }] })
     .select("_id standard chapter topic difficulty")
     .limit(POOL_LIMIT)
     .lean<{ _id: Types.ObjectId; standard: string; chapter: string; topic: string | null; difficulty: string }[]>();
@@ -330,10 +334,11 @@ export async function createAssessment(session: Session, setup: Setup) {
   const chosen = planned.plan.count >= MIN_QUESTIONS ? await questionsFor(session, setup, planned) : [];
   if (chosen.length < MIN_QUESTIONS) {
     const total = planned.plan.available.total;
+    const kind = setup.pool === "pyqs" ? "past-year question" : setup.pool === "others" ? "question (without PYQs)" : "question";
     throw badRequest(
       total
-        ? `These topics have only ${total} past-year question${total === 1 ? "" : "s"}. Pick more topics (at least ${MIN_QUESTIONS} questions are needed).`
-        : "There are no past-year questions in these topics yet. Pick other topics."
+        ? `These topics have only ${total} ${kind}${total === 1 || setup.pool === "others" ? "" : "s"}. Pick more topics (at least ${MIN_QUESTIONS} questions are needed).`
+        : `There are no ${setup.pool === "pyqs" ? "past-year questions" : setup.pool === "others" ? "questions without PYQs" : "questions"} in these topics yet. Pick other topics${setup.pool === "others" ? " or include PYQs" : ""}.`
     );
   }
 
@@ -355,6 +360,7 @@ export async function createAssessment(session: Session, setup: Setup) {
     title: titleOf(setup.scope),
     scope: setup.scope,
     mix: setup.mix,
+    pool: setup.pool,
     plan: { ...plan, fresh: chosen.filter((q) => q.tier === 0).length, requested: setup.count },
     basis: planned.basis,
     questions,
@@ -552,13 +558,13 @@ export async function finalize(a: SelfAssessmentDoc, now = new Date(), lastAnswe
  */
 type SummarySource = Pick<
   SelfAssessmentDoc,
-  | "_id" | "title" | "subject" | "mix" | "scope" | "plan" | "basis" | "marksPerQuestion" | "negativeMarks" | "durationMinutes"
+  | "_id" | "title" | "subject" | "mix" | "pool" | "scope" | "plan" | "basis" | "marksPerQuestion" | "negativeMarks" | "durationMinutes"
   | "createdAt" | "startedAt" | "submittedAt" | "answers" | "score" | "maxScore" | "correctCount" | "wrongCount" | "skippedCount" | "timeTakenSeconds"
 > & { questions: Pick<TestQuestion, "standard" | "chapter" | "topic" | "difficulty">[] };
 
 /** The fields a list needs: everything but the questions' text, options, answers and solutions. */
 const SUMMARY_FIELDS =
-  "title subject mix scope plan basis marksPerQuestion negativeMarks durationMinutes createdAt startedAt submittedAt answers score maxScore correctCount wrongCount skippedCount timeTakenSeconds " +
+  "title subject mix pool scope plan basis marksPerQuestion negativeMarks durationMinutes createdAt startedAt submittedAt answers score maxScore correctCount wrongCount skippedCount timeTakenSeconds " +
   "questions.standard questions.chapter questions.topic questions.difficulty";
 
 /** The topic report; questions and answers as plain objects (Mongoose sub-documents don't spread). */
@@ -578,6 +584,8 @@ export function summaryOf(a: SummarySource, report: ReturnType<typeof reportOf> 
     title: a.title,
     subject: a.subject,
     mix: a.mix,
+    // Older tests were all past-year questions.
+    pool: (a.pool ?? "pyqs") as QuestionPool,
     state,
     scope: (a.scope ?? []).map((s) => ({ standard: s.standard, chapter: s.chapter, topics: s.topics ?? [] })),
     questionCount,

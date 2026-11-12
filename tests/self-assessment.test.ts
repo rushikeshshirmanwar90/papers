@@ -292,6 +292,11 @@ async function seed() {
   }
   docs.push(q("Projectile Motion", "Easy", { correctAnswer: "" })); // can't be marked
   docs.push(q("Projectile Motion", "Easy", { source: "NEET 2020" })); // another track's exam
+  // The bank's other questions (no exam and year in the source): only used when a test asks for them.
+  for (let i = 0; i < 8; i++) docs.push(q("Projectile Motion", "Easy", { source: "" }));
+  for (let i = 0; i < 8; i++) docs.push(q("Projectile Motion", "Medium", { source: "" }));
+  for (let i = 0; i < 4; i++) docs.push(q("Projectile Motion", "Hard", { source: "HC Verma" }));
+  docs.push(q("Projectile Motion", "Easy", { source: "", pyqPaper: true })); // part of a past paper (no year written): never "other"
   await Question.insertMany(docs);
 }
 
@@ -516,5 +521,52 @@ describe("self-assessment routes", () => {
       assert.equal(submitBody.assessment.state, "submitted");
       assert.equal(submitBody.assessment.result.correct, 10, `round ${round}: every answer sent with Submit is scored`);
     }
+  });
+});
+
+describe("self-assessment question pool (Include PYQs)", () => {
+  const sourcesOf = async (id: string) => {
+    const doc = await m.SelfAssessment.findById(id).lean<{ questions: { sourceId: unknown }[] }>();
+    const qs = await m.Question.find({ _id: { $in: doc!.questions.map((x) => x.sourceId) } }).select("source").lean<{ source: string }[]>();
+    return qs.map((x) => x.source ?? "");
+  };
+  const isPyq = (source: string) => /(JEE|AIEEE|IIT|BITSAT|NEET|AIPMT|AIIMS|JIPMER).*(19|20)\d{2}|(19|20)\d{2}.*(JEE|AIEEE|IIT|BITSAT|NEET|AIPMT|AIIMS|JIPMER)/i.test(source);
+  const plan = async (body: Record<string, unknown>) => json(await m.planRoute.POST(req("POST", "/api/self-assessments/plan", "student", setup(body)), {}), 200);
+
+  test("older apps send no pool: past-year questions only, as before", async () => {
+    const made = await create("student", setup({ count: 20 }));
+    assert.equal(made.assessment.pool, "pyqs");
+    const sources = await sourcesOf(made.assessment.id);
+    assert.ok(sources.length >= 5 && sources.every((x) => x === "JEE MAIN 2022"), "only this bank's PYQs");
+  });
+
+  test("others: the bank's other questions only, never a past paper (this bank's or another's)", async () => {
+    const counted = await plan({ pool: "others" });
+    assert.equal(counted.plan.available.total, 20, "8 + 8 + 4 other questions; the past-paper copy and NEET 2020 are left out");
+    const made = await create("student", setup({ pool: "others", count: 10 }));
+    assert.equal(made.assessment.pool, "others");
+    const sources = await sourcesOf(made.assessment.id);
+    assert.equal(sources.length, 10);
+    assert.ok(sources.every((x) => !isPyq(x)), `no PYQs: ${sources.join(", ")}`);
+  });
+
+  test("all: PYQs and other questions together, never another track's PYQs", async () => {
+    const counted = await plan({ pool: "all" });
+    assert.equal(counted.plan.available.total, 36 + 20, "this bank's 36 markable PYQs + 20 other questions");
+    const made = await create("student", setup({ pool: "all", count: 50 }));
+    assert.equal(made.assessment.pool, "all");
+    const sources = await sourcesOf(made.assessment.id);
+    assert.ok(sources.some(isPyq) && sources.some((x) => !isPyq(x)), "50 questions need both kinds");
+    assert.ok(!sources.includes("NEET 2020"), "a JEE student never gets NEET papers");
+  });
+
+  test("the pool shows in the list too", async () => {
+    const list = await json(await m.listRoute.GET(req("GET", "/api/self-assessments", "student"), {}), 200);
+    const pools = new Set((list.assessments as { pool: string }[]).map((a) => a.pool));
+    assert.ok(pools.has("others") && pools.has("all") && pools.has("pyqs"), `pools listed: ${[...pools].join(", ")} of ${list.assessments.length}`);
+  });
+
+  test("an unknown pool is refused", async () => {
+    await create("student", setup({ pool: "everything" }), 400);
   });
 });

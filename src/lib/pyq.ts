@@ -50,6 +50,37 @@ export function pyqFilter(bank: QuestionBank, subject: SchoolSubject, chapter?: 
   return filter;
 }
 
+/** A question naming any exam and a year is somebody's past paper (JEE's or NEET's). */
+const ANY_PAST_PAPER = new RegExp(`(${EXAMS.JEE.sources}|${EXAMS.NEET.sources}).*${YEAR}|${YEAR}.*(${EXAMS.JEE.sources}|${EXAMS.NEET.sources})`, "i");
+
+/**
+ * The bank's other questions in a subject: JEE/NEET questions that aren't any
+ * exam's past paper (their source names no exam and year, e.g. "" or a book).
+ * Another program's PYQs are never "other" questions, so a JEE student never
+ * gets NEET papers this way (and the other way round).
+ */
+export function otherFilter(subject: SchoolSubject): Record<string, unknown> {
+  return {
+    ...NOT_A_BANK_COPY,
+    examCategory: "JEE/NEET",
+    subject: { $in: BANK_SUBJECTS[subject] },
+    answerType: { $in: ["MCQ", "Numerical"] },
+    pyqPaper: { $ne: true },
+    source: { $not: ANY_PAST_PAPER },
+  };
+}
+
+/** Which questions a self-assessment draws from: past-year only (the default, as before), both, or the others only. */
+export const QUESTION_POOLS = ["pyqs", "all", "others"] as const;
+export type QuestionPool = (typeof QUESTION_POOLS)[number];
+
+/** The Mongo filter for a pool of a bank's questions in a subject. */
+export function poolFilter(bank: QuestionBank, subject: SchoolSubject, pool: QuestionPool): Record<string, unknown> {
+  if (pool === "pyqs") return pyqFilter(bank, subject);
+  if (pool === "others") return otherFilter(subject);
+  return { $or: [pyqFilter(bank, subject), otherFilter(subject)] };
+}
+
 /** Every PYQ of the bank's subjects: the questions a student of that bank may practise. */
 export const pyqBankFilter = (bank: QuestionBank) => bankFilter(bank, BANKS[bank].subjects.flatMap((s) => BANK_SUBJECTS[s]));
 
