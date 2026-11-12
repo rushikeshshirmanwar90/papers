@@ -15,7 +15,8 @@ export const GET = route(async (req) => {
 
 /**
  * Makes a self-assessment from past-year questions:
- * { subject, scope: [{ standard, chapter, topics: [] }], count, mix, durationMinutes | null, negativeMarking }
+ * { subjects: [Physics, …] (or subject), scope: [{ subject, standard, chapter, topics: [] }], count (5–150),
+ *   mix, durationMinutes | null, negativeMarking, pool: pyqs | all | others (default pyqs) }
  * (no topics: the whole chapter). It's ready to start; the questions come with Start.
  */
 export const POST = route(async (req) => {

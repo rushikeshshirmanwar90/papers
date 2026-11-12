@@ -297,6 +297,9 @@ async function seed() {
   for (let i = 0; i < 8; i++) docs.push(q("Projectile Motion", "Medium", { source: "" }));
   for (let i = 0; i < 4; i++) docs.push(q("Projectile Motion", "Hard", { source: "HC Verma" }));
   docs.push(q("Projectile Motion", "Easy", { source: "", pyqPaper: true })); // part of a past paper (no year written): never "other"
+  // A second subject, for tests that mix subjects.
+  for (let i = 0; i < 6; i++) docs.push(q("Mole Fraction", "Easy", { subject: "Chemistry", chapter: "Some Basic Concepts of Chemistry", source: "JEE MAIN 2021" }));
+  for (let i = 0; i < 6; i++) docs.push(q("Mole Fraction", "Medium", { subject: "Chemistry", chapter: "Some Basic Concepts of Chemistry", source: "JEE MAIN 2021" }));
   await Question.insertMany(docs);
 }
 
@@ -474,7 +477,7 @@ describe("self-assessment routes", () => {
     await create("student", setup({ subject: "Biology" }), 400);
     await create("student", setup({ scope: [] }), 400);
     await create("student", setup({ count: 3 }), 400);
-    await create("student", setup({ count: 51 }), 400);
+    await create("student", setup({ count: 151 }), 400); // 5–15 per topic, up to 150
     await create("student", setup({ mix: "random" }), 400);
     await create("student", setup({ scope: [{ standard: "12th", chapter: "Kinematics", topics: [] }] }), 400);
   });
@@ -568,5 +571,49 @@ describe("self-assessment question pool (Include PYQs)", () => {
 
   test("an unknown pool is refused", async () => {
     await create("student", setup({ pool: "everything" }), 400);
+  });
+});
+
+describe("self-assessment with several subjects", () => {
+  const two = (extra: Record<string, unknown> = {}) =>
+    setup({
+      subject: undefined,
+      subjects: ["Physics", "Chemistry"],
+      scope: [
+        { subject: "Physics", standard: "11th", chapter: "Kinematics", topics: ["Projectile Motion"] },
+        { subject: "Chemistry", standard: "11th", chapter: "Some Basic Concepts of Chemistry", topics: ["Mole Fraction"] },
+      ],
+      count: 20,
+      ...extra,
+    });
+
+  test("one test mixes Physics and Chemistry: both subjects' questions, stored and listed", async () => {
+    const made = await create("student", two());
+    assert.deepEqual(made.assessment.subjects, ["Physics", "Chemistry"]);
+    assert.equal(made.assessment.subject, "Physics", "the first subject stays in subject, for older apps");
+    assert.equal(made.assessment.title, "Physics + Chemistry · 2 topics");
+    assert.deepEqual(made.assessment.scope.map((x: { subject: string }) => x.subject), ["Physics", "Chemistry"]);
+    const doc = await m.SelfAssessment.findById(made.assessment.id).lean<{ questions: { subject: string }[] }>();
+    const subjects = new Set(doc!.questions.map((x) => x.subject));
+    assert.ok(subjects.has("Physics") && subjects.has("Chemistry"), `questions from both: ${[...subjects].join(", ")}`);
+    const chemistryList = await json(await m.listRoute.GET(req("GET", "/api/self-assessments?subject=Chemistry", "student"), {}), 200);
+    assert.ok(chemistryList.assessments.some((a: { id: string }) => a.id === made.assessment.id), "listed under each of its subjects");
+  });
+
+  test("the plan counts each subject's topics on their own", async () => {
+    const planned = await json(await m.planRoute.POST(req("POST", "/api/self-assessments/plan", "student", two()), {}), 200);
+    const chem = planned.topics.find((t: { topic: string }) => t.topic === "Mole Fraction");
+    assert.equal(chem.available, 12);
+  });
+
+  test("a chapter's subject must be one of the subjects picked, and every subject must be the student's", async () => {
+    await create("student", two({ subjects: ["Physics"] }), 400);
+    await create("student", two({ subjects: ["Physics", "Chemistry", "Biology"] }), 400);
+  });
+
+  test("older apps (one subject, chapters without a subject) work as before", async () => {
+    const made = await create("student", setup({ count: 10 }));
+    assert.deepEqual(made.assessment.subjects, ["Physics"]);
+    assert.equal(made.assessment.title, "Kinematics");
   });
 });

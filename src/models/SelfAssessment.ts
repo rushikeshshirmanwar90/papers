@@ -4,6 +4,8 @@ import type { TestAnswer } from "@/models/TestAttempt";
 
 /** A chapter the student picked, with the topics picked (none: the whole chapter). */
 export interface AssessmentScope {
+  /** The chapter's subject; missing on one-subject tests made before several subjects were allowed. */
+  subject?: string;
   standard: string;
   chapter: string;
   topics: string[];
@@ -18,7 +20,10 @@ export interface AssessmentScope {
 export interface SelfAssessmentDoc extends Document {
   tuitionId: Types.ObjectId;
   studentId: Types.ObjectId;
+  /** The first subject (the only one on older tests). */
   subject: string;
+  /** Every subject in the test; empty on older tests (read it as [subject]). */
+  subjects?: string[];
   title: string;
   scope: AssessmentScope[];
   /** smart | balanced | challenge | retake */
@@ -87,9 +92,10 @@ const SelfAssessmentSchema = new Schema<SelfAssessmentDoc>(
     tuitionId: { type: Schema.Types.ObjectId, ref: "Tuition", required: true },
     studentId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     subject: { type: String, required: true },
+    subjects: { type: [String], default: undefined },
     title: { type: String, required: true, trim: true },
     scope: {
-      type: [new Schema<AssessmentScope>({ standard: String, chapter: String, topics: { type: [String], default: [] } }, { _id: false })],
+      type: [new Schema<AssessmentScope>({ subject: String, standard: String, chapter: String, topics: { type: [String], default: [] } }, { _id: false })],
       default: [],
     },
     mix: { type: String, default: "balanced" },
