@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { badRequest } from "@/lib/http";
-import Question, { NOT_A_BANK_COPY } from "@/models/Question";
+import Question, { NOT_A_BANK_COPY, NOT_FLAGGED } from "@/models/Question";
 
 // Question discovery for the one-page Make PDF screen. Read-only: it never
 // writes a question. Everything is MCQs only, never a bank-copy duplicate, and
@@ -138,6 +138,8 @@ export function scopeFilter(scope: BankScope, skip: { chapters?: boolean; topics
   const and: Record<string, unknown>[] = [];
   const filter: Record<string, unknown> = {
     ...NOT_A_BANK_COPY,
+    // Broken options: not offered for new tests or papers (and refused if sent) until fixed.
+    ...NOT_FLAGGED,
     examCategory: scope.course === "Foundation" ? "Foundation" : "JEE/NEET",
     standard: scope.standard,
     subject: { $in: BANK_NAMES[scope.subject] ?? [scope.subject] },

@@ -3,6 +3,7 @@ import { badRequest, notFound, objectId, readJson, route } from "@/lib/http";
 import { assessmentUses, enumOf, inUse, requireBankAdmin } from "@/lib/question-bank";
 import Paper from "@/models/Paper";
 import Question from "@/models/Question";
+import { optionReviewReasons } from "@/lib/question-review";
 
 // Editing and deleting one question of the shared bank: platform admin only
 // (see lib/question-bank.ts).
@@ -70,8 +71,19 @@ export const PATCH = route<Context>(async (req, { params }) => {
   const update = readQuestionUpdate(body, current);
   if (!Object.keys(update).length) return current;
 
-  const question = await Question.findByIdAndUpdate(id, update, { returnDocument: "after", runValidators: true }).lean();
+  const question = await Question.findByIdAndUpdate(id, update, { returnDocument: "after", runValidators: true }).lean<Record<string, unknown>>();
   if (!question) throw notFound("This question");
+  // A question flagged for broken options comes back into practice and tests once an edit fixes them.
+  const flags = (question.reviewFlags as { options?: string[] } | undefined)?.options;
+  if (flags?.length) {
+    const reasons = optionReviewReasons(question);
+    const fixed = await Question.findByIdAndUpdate(
+      id,
+      reasons.length ? { $set: { "reviewFlags.options": reasons } } : { $unset: { reviewFlags: 1 } },
+      { returnDocument: "after" }
+    ).lean();
+    return fixed ?? question;
+  }
   return question;
 });
 
