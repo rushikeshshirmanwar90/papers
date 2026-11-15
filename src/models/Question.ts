@@ -33,6 +33,8 @@ export interface QuestionDoc extends Document {
    * syllabus), so those never list the same question twice.
    */
   bankCopy?: boolean;
+  /** Broken options found in the data (scripts/flag-broken-mcq-options.mjs); left out of practice and new tests until fixed. */
+  reviewFlags?: { options: string[]; flaggedAt?: Date };
 }
 
 const QuestionSchema = new Schema<QuestionDoc>({
@@ -75,10 +77,18 @@ const QuestionSchema = new Schema<QuestionDoc>({
   vedclassId: { type: Number },
   pyqPaper: { type: Boolean },
   bankCopy: { type: Boolean },
+  /** Set by scripts/flag-broken-mcq-options.mjs: why this question's options need a person to fix them. */
+  reviewFlags: {
+    type: new Schema({ options: { type: [String], default: undefined }, flaggedAt: Date }, { _id: false }),
+    default: undefined,
+  },
 });
 
 /** Leaves out previous-year papers' copies of bank questions; see bankCopy. */
 export const NOT_A_BANK_COPY = { bankCopy: { $ne: true } } as const;
+
+/** Leaves out questions flagged for review (broken options) until a person fixes them. */
+export const NOT_FLAGGED = { "reviewFlags.options.0": { $exists: false } } as const;
 
 // A paper's questions in order; per-paper subject counts (/api/papers) read
 // straight from the index; the filters the apps search by; a question's

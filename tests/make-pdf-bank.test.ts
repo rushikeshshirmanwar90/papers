@@ -44,6 +44,8 @@ const docs: Record<string, Doc> = {
   f10sCopy: q({ examCategory: "Foundation", standard: "10th", subject: "Science", chapter: "Light", bankCopy: true }),
   f10sCaps: q({ examCategory: "Foundation", standard: "10th", subject: "Science", chapter: "LIGHT", topic: "Mirrors" }),
   phys: q({ chapter: "Kinematics", topic: "Velocity" }),
+  physEasy: q({ chapter: "Kinematics", topic: "Velocity", difficulty: "Easy" }),
+  physHard: q({ chapter: "Kinematics", topic: "Velocity", difficulty: "Hard" }),
   physNum: q({ answerType: "Numerical" }),
   physCopy: q({ bankCopy: true }),
   physJee20: q({ chapter: "Kinematics", topic: "Speed", source: "JEE MAIN 2020" }),
@@ -144,6 +146,29 @@ describe("Competitive scopes", () => {
     assert.ok(kin.topics.some((t) => t.name === "Velocity"));
     const topic = await found(comp({ chapters: ["Kinematics"], topics: ["velocity"] }));
     assert.ok(topic.includes(ids.phys) && !topic.includes(ids.physJee20));
+  });
+});
+
+describe("question levels", () => {
+  test("no levels: every level; one or more levels: only those", async () => {
+    const all = await found(comp({ chapters: ["Kinematics"], topics: ["Velocity"] }));
+    assert.ok(all.includes(ids.phys) && all.includes(ids.physEasy) && all.includes(ids.physHard));
+    assert.deepEqual(await found(comp({ chapters: ["Kinematics"], topics: ["Velocity"], levels: ["Easy"] })), [ids.physEasy]);
+    const mediumHard = (await found(comp({ chapters: ["Kinematics"], topics: ["Velocity"], levels: ["Medium", "Hard"] }))).sort();
+    assert.deepEqual(mediumHard, all.filter((id) => id !== ids.physEasy).sort(), "everything but the easy one");
+    assert.deepEqual(await found(comp({ chapters: ["Kinematics"], topics: ["Velocity"], levels: ["Hard"] })), [ids.physHard]);
+    assert.equal((await bank.scopeOptions(comp({ chapters: ["Kinematics"], topics: ["Velocity"], levels: ["Hard"] }))).total, 1);
+  });
+  test("levels are checked; older apps that send none are unaffected", () => {
+    assert.equal(comp().levels, undefined);
+    assert.equal(comp({ levels: [] }).levels, undefined);
+    assert.deepEqual(comp({ levels: ["Hard", "Hard", "Easy"] }).levels, ["Hard", "Easy"]);
+    assert.throws(() => comp({ levels: ["Difficult"] }), /levels must be Easy, Medium or Hard/);
+    assert.throws(() => comp({ levels: "Easy" }));
+  });
+  test("random picks keep to the levels", async () => {
+    const picked = await bank.randomQuestions(comp({ chapters: ["Kinematics"], topics: ["Velocity"], levels: ["Easy"] }), 5, []);
+    assert.deepEqual(picked.questions.map((d) => String(d._id)), [ids.physEasy]);
   });
 });
 

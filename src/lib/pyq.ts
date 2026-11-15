@@ -12,7 +12,7 @@ import {
   type Track,
 } from "@/lib/school";
 import { BANK_SUBJECTS } from "@/lib/syllabus";
-import { NOT_A_BANK_COPY } from "@/models/Question";
+import { NOT_A_BANK_COPY, NOT_FLAGGED } from "@/models/Question";
 
 // Past-year questions: questions whose source names an exam and a year, e.g.
 // "NEET 2019", "JEE MAIN 2020", "AIPMT 2014". They come from the question
@@ -36,6 +36,8 @@ function bankFilter(bank: QuestionBank, bankSubjects: string[]): Record<string, 
   const { exams } = BANKS[bank];
   return {
     ...NOT_A_BANK_COPY,
+    // Broken options: never in practice or self-assessments until fixed.
+    ...NOT_FLAGGED,
     examCategory: "JEE/NEET",
     subject: { $in: bankSubjects },
     answerType: { $in: ["MCQ", "Numerical"] },

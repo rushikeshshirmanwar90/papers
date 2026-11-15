@@ -1,6 +1,6 @@
 import { Types } from "mongoose";
 import { badRequest } from "@/lib/http";
-import Question, { NOT_A_BANK_COPY } from "@/models/Question";
+import Question, { NOT_A_BANK_COPY, NOT_FLAGGED } from "@/models/Question";
 
 // Question discovery for the one-page Make PDF screen. Read-only: it never
 // writes a question. Everything is MCQs only, never a bank-copy duplicate, and
@@ -77,7 +77,13 @@ export interface BankScope {
   topics: string[];
   years: string[];
   search?: string;
+  /** Easy, Medium and/or Hard (the bank's difficulty); none means every level. Older apps send none. */
+  levels?: QuestionLevel[];
 }
+
+/** The bank's difficulty values (the questions collection uses exactly these three). */
+export const QUESTION_LEVELS = ["Easy", "Medium", "Hard"] as const;
+export type QuestionLevel = (typeof QUESTION_LEVELS)[number];
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const exactly = (value: string) => new RegExp(`^\\s*${escapeRegex(value.trim())}\\s*$`, "i");
@@ -115,7 +121,13 @@ export function readScope(raw: Record<string, unknown>): BankScope {
   const years = names(raw.years, "years");
   if (!years.every((year) => /^(19|20)\d{2}$/.test(year))) throw badRequest("years must be four-digit years.");
   if (raw.search !== undefined && (typeof raw.search !== "string" || raw.search.length > 300)) throw badRequest("Search must be at most 300 characters.");
-  return { course, standard, exam, subject, source: sources.length === 1 ? sources[0] as QuestionSource : sources as QuestionSource[], chapters: names(raw.chapters, "chapters"), topics: names(raw.topics, "topics"), years, ...(raw.search ? { search: String(raw.search).trim() } : {}) };
+  const levels = raw.levels === undefined || raw.levels === null ? [] : raw.levels;
+  if (!Array.isArray(levels) || levels.some((l) => !(QUESTION_LEVELS as readonly unknown[]).includes(l))) throw badRequest("levels must be Easy, Medium or Hard.");
+  return {
+    course, standard, exam, subject, source: sources.length === 1 ? sources[0] as QuestionSource : sources as QuestionSource[], chapters: names(raw.chapters, "chapters"), topics: names(raw.topics, "topics"), years,
+    ...(raw.search ? { search: String(raw.search).trim() } : {}),
+    ...(levels.length ? { levels: [...new Set(levels as QuestionLevel[])] } : {}),
+  };
 }
 
 /**
@@ -126,6 +138,8 @@ export function scopeFilter(scope: BankScope, skip: { chapters?: boolean; topics
   const and: Record<string, unknown>[] = [];
   const filter: Record<string, unknown> = {
     ...NOT_A_BANK_COPY,
+    // Broken options: not offered for new tests or papers (and refused if sent) until fixed.
+    ...NOT_FLAGGED,
     examCategory: scope.course === "Foundation" ? "Foundation" : "JEE/NEET",
     standard: scope.standard,
     subject: { $in: BANK_NAMES[scope.subject] ?? [scope.subject] },
@@ -144,6 +158,7 @@ export function scopeFilter(scope: BankScope, skip: { chapters?: boolean; topics
   }
   if (!skip.chapters && scope.chapters.length) filter.chapter = { $in: scope.chapters.map(exactly) };
   if (!skip.topics && scope.topics.length) filter.topic = { $in: scope.topics.map(exactly) };
+  if (scope.levels?.length) filter.difficulty = { $in: scope.levels };
   if (scope.search) {
     const pattern = new RegExp(escapeRegex(scope.search), "i");
     and.push({ $or: ["questionText", "chapter", "topic", "optionA", "optionB", "optionC", "optionD", "explanation", "source"].map(field => ({ [field]: pattern })) });

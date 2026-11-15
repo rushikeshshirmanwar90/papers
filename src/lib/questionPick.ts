@@ -3,7 +3,7 @@ import { bankSubjects, examConditions } from "@/lib/examFilter";
 import { type ExamId } from "@/lib/examBank";
 import { buildFilter } from "@/lib/queryFilters";
 import { LEVEL_SPELLINGS, LEVELS, levelOf, planPick, zeroMix, type ChapterCapacity, type Mix, type Quota } from "@/lib/questionPickPlan";
-import Question, { NOT_A_BANK_COPY } from "@/models/Question";
+import Question, { NOT_A_BANK_COPY, NOT_FLAGGED } from "@/models/Question";
 
 // Automatic question selection for a PDF: `count` questions drawn at random
 // from the question bank, for one exam, subject and the chosen chapters.
@@ -56,6 +56,7 @@ function scopeFilter(request: PickRequest): Record<string, unknown> {
   return {
     ...filter,
     ...NOT_A_BANK_COPY,
+    ...NOT_FLAGGED,
     $and: examConditions(request.exam),
     subject: { $in: bankSubjects(request.subject) },
     answerType: request.answerType === "any" ? { $nin: ["Descriptive"] } : request.answerType,
