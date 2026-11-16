@@ -1,0 +1,61 @@
+# ============================================================================
+# Docker Compose Configuration for Quest (Papers) API
+# ============================================================================
+#
+# This file defines 1 service:
+#   1. web - Next.js application container
+#
+# MongoDB is hosted separately (e.g. MongoDB Atlas) - no database or cache
+# container runs here.
+#
+# ENVIRONMENT VARIABLES:
+#   This file reads variables from the .env file in the same directory.
+#   Variables are referenced using ${VARIABLE_NAME} syntax.
+#
+# HOW TO USE:
+#   1. Create .env from your existing settings: copy .env.local .env
+#   2. Set MONGODB_URI to your external MongoDB server
+#   3. Start services: docker compose up -d
+#
+# VARIABLE FLOW:
+#   .env file -> docker-compose.yml -> container
+# ============================================================================
+
+services:
+  # --------------------------------------------------------------------------
+  # Web Application Container (Next.js)
+  # --------------------------------------------------------------------------
+  # Receives from .env:
+  #   - MONGODB_URI (required), MONGODB_DB
+  #   - JWT_SECRET, JOIN_CODE_SECRET, ADMIN_API_KEY
+  #   - SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM_NAME
+  #   - PDF_FIGURE_HOSTS
+  #   - AI_LEARNING_OLLAMA_URL, AI_LEARNING_OLLAMA_MODEL
+  #
+  # Note: MONGODB_URI should point to your external MongoDB server
+  #   Example: mongodb://user:pass@mongodb-server-ip:27017/pcmb
+  #   Or MongoDB Atlas: mongodb+srv://user:pass@cluster.mongodb.net/pcmb
+  # --------------------------------------------------------------------------
+  web:
+    image: exponentor/quest:latest
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_DB: ${MONGODB_DB:-pcmb}
+      JWT_SECRET: ${JWT_SECRET}
+      JOIN_CODE_SECRET: ${JOIN_CODE_SECRET:-}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-PCMB Paper}
+      PDF_FIGURE_HOSTS: ${PDF_FIGURE_HOSTS:-}
+      AI_LEARNING_OLLAMA_URL: ${AI_LEARNING_OLLAMA_URL:-}
+      AI_LEARNING_OLLAMA_MODEL: ${AI_LEARNING_OLLAMA_MODEL:-}
+    restart: always

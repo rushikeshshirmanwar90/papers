@@ -1,0 +1,16 @@
+node_modules
+.next
+.expo
+.git
+.env*
+backups
+docs
+tests
+/*.pdf
+/*.jpeg
+*.tsbuildinfo
+scratch-*.ts
+STEP*_REPORT.md
+npm-debug.log*
+Dockerfile
+.dockerignore

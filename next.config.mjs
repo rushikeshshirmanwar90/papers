@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The Dockerfile sets NEXT_OUTPUT=standalone to get a self-contained server.js.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   experimental: {
     // Headless Chrome for question-paper PDFs is loaded at runtime, not bundled.
     serverComponentsExternalPackages: ["pdfjs-dist", "puppeteer-core", "@sparticuz/chromium"],
