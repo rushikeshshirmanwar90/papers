@@ -93,6 +93,14 @@ export interface DashboardStats {
   papersByExamType: { examType: ExamType; count: number }[];
 }
 
+export interface TuitionStats {
+  totalTuitions: number;
+  activeTuitions: number;
+  totalTeachers: number;
+  totalStudentsInTuitions: number;
+  totalBatches: number;
+}
+
 export const SUBJECTS: Subject[] = [
   "Physics",
   "Chemistry",

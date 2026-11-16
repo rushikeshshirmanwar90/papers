@@ -25,4 +25,9 @@ const TuitionSchema = new Schema<TuitionDoc>(
   { timestamps: true }
 );
 
+// Tuition list ordered by creation date; name search uses a collation index.
+TuitionSchema.index({ createdAt: -1 });
+TuitionSchema.index({ name: 1 });
+TuitionSchema.index({ active: 1 });
+
 export default models.Tuition || model<TuitionDoc>("Tuition", TuitionSchema);

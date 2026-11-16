@@ -99,4 +99,17 @@ QuestionSchema.index({ paperId: 1, subject: 1 });
 QuestionSchema.index({ standard: 1, subject: 1, chapter: 1, topic: 1 });
 QuestionSchema.index({ vedclassId: 1 }, { sparse: true });
 
+// Full-text search across question text, options and explanation.
+// Used by /api/questions?search=… instead of a slow regex scan.
+QuestionSchema.index(
+  { questionText: "text", optionA: "text", optionB: "text", optionC: "text", optionD: "text", explanation: "text", chapter: "text", topic: "text", source: "text" },
+  { name: "question_text_search", weights: { questionText: 10, chapter: 5, topic: 5, optionA: 2, optionB: 2, optionC: 2, optionD: 2, explanation: 1, source: 1 } }
+);
+
+// bankCopy filter used on almost every bank-wide query.
+QuestionSchema.index({ bankCopy: 1 }, { sparse: true });
+
+// answerType filter used by practice, PYQ and test builder.
+QuestionSchema.index({ answerType: 1 });
+
 export default models.Question || model<QuestionDoc>("Question", QuestionSchema);

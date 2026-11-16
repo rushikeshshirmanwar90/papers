@@ -53,19 +53,24 @@ export async function checkLogin(email: string, password: string): Promise<UserD
   }
   if (!(await bcrypt.compare(password, user.passwordHash))) {
     const failed = user.failedLogins + 1;
+    // Record the failed attempt; if the write fails (e.g. Atlas storage full),
+    // the user still gets 401 — the counter just doesn't increment.
     await User.updateOne(
       { _id: user._id },
       failed >= MAX_FAILED_LOGINS
         ? { failedLogins: 0, lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60000) }
         : { failedLogins: failed }
-    );
+    ).catch(() => {});
     throw new HttpError(401, "Wrong email or password.");
   }
   if (!user.active) throw new HttpError(403, "This account has been turned off. Ask your tuition.");
   if (user.tuitionId && !(await Tuition.exists({ _id: user.tuitionId, active: true }))) {
     throw new HttpError(403, "This tuition's account is turned off.");
   }
-  await User.updateOne({ _id: user._id }, { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() });
+  // Record the successful login; if the write fails (e.g. Atlas storage quota
+  // exceeded) the login still succeeds — lastLoginAt is cosmetic, not
+  // security-critical. Resetting failedLogins can also wait for the next write.
+  await User.updateOne({ _id: user._id }, { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() }).catch(() => {});
   return user;
 }
 
