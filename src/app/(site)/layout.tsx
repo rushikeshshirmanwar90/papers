@@ -26,6 +26,15 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
+        <footer className="border-t border-slate-200 bg-white">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4 text-xs text-slate-400">
+            <span>© {new Date().getFullYear()} PCMB Paper Reader</span>
+            <div className="flex gap-5">
+              <Link href="/privacy" className="hover:text-slate-600">Privacy Policy</Link>
+              <Link href="/account/delete" className="hover:text-red-600">Delete Account</Link>
+            </div>
+          </div>
+        </footer>
     </>
   );
 }
