@@ -17,11 +17,16 @@ export const GET = route(async (req) => {
   const q = req.nextUrl.searchParams.get("q")?.trim().slice(0, 60);
   const filter = q ? { name: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } : {};
   const tuitions = await Tuition.find(filter).sort({ createdAt: -1 }).lean();
+  const tuitionIds = tuitions.map((t) => t._id);
   const counts = await User.aggregate<{ _id: { t: mongoose.Types.ObjectId; r: string }; n: number }>([
+    { $match: { tuitionId: { $in: tuitionIds }, role: { $in: ["teacher", "student"] } } },
     { $group: { _id: { t: "$tuitionId", r: "$role" }, n: { $sum: 1 } } },
   ]);
-  const owners = await User.find({ role: "tuition" }).select("tuitionId email name").lean();
-  const batchCounts = await Batch.aggregate<{ _id: mongoose.Types.ObjectId; n: number }>([{ $group: { _id: "$tuitionId", n: { $sum: 1 } } }]);
+  const owners = await User.find({ role: "tuition", tuitionId: { $in: tuitionIds } }).select("tuitionId email name").lean();
+  const batchCounts = await Batch.aggregate<{ _id: mongoose.Types.ObjectId; n: number }>([
+    { $match: { tuitionId: { $in: tuitionIds } } },
+    { $group: { _id: "$tuitionId", n: { $sum: 1 } } },
+  ]);
   return {
     tuitions: tuitions.map((t) => {
       const count = (role: string) => counts.find((c) => String(c._id.t) === String(t._id) && c._id.r === role)?.n ?? 0;

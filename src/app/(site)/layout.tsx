@@ -19,6 +19,9 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               <Link href="/papers/upload" className="hover:text-indigo-600">
                 Upload Paper
               </Link>
+              <Link href="/privacy" className="hover:text-indigo-600">
+                Privacy Policy
+              </Link>
             </nav>
           </div>
         </header>

@@ -12,8 +12,6 @@ export const dynamic = "force-dynamic";
 const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 5000;
 
-const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
@@ -40,18 +38,9 @@ export async function GET(req: NextRequest) {
     if (exam?.subjects) filter.subject = { $in: exam.subjects };
 
     if (search) {
-      const searchPattern = new RegExp(escapeRegex(search), "i");
-      filter.$or = [
-        { questionText: searchPattern },
-        { chapter: searchPattern },
-        { topic: searchPattern },
-        { optionA: searchPattern },
-        { optionB: searchPattern },
-        { optionC: searchPattern },
-        { optionD: searchPattern },
-        { explanation: searchPattern },
-        { source: searchPattern },
-      ];
+      // Use the text index when a search term is given; fall back to a
+      // regex scan only if the index isn't available yet (e.g. first boot).
+      filter.$text = { $search: search };
     }
     if (year) {
       and.push({ source: { $regex: new RegExp(`\\b${year}\\b`, "i") } });

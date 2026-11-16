@@ -36,4 +36,11 @@ const PaperSchema = new Schema<PaperDoc>({
   uploadedDate: { type: Date, default: Date.now },
 });
 
+// Papers list ordered by upload date; exam-type breakdown used by /api/dashboard.
+PaperSchema.index({ uploadedDate: -1 });
+PaperSchema.index({ examType: 1 });
+// Filtering by category, standard and subject (array field).
+PaperSchema.index({ examCategory: 1, standard: 1 });
+PaperSchema.index({ subjects: 1 });
+
 export default models.Paper || model<PaperDoc>("Paper", PaperSchema);

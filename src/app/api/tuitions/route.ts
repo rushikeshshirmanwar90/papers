@@ -13,13 +13,22 @@ export const GET = route(async (req) => {
   const filter = q ? { name: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } : {};
 
   const tuitions = await Tuition.find(filter).sort({ createdAt: -1 }).lean();
+  const tuitionIds = tuitions.map((t) => t._id);
 
+  // Scope every follow-up query to only the tuitions we returned — avoids
+  // full-collection scans when there are many tuitions.
   const [counts, owners, batchCounts] = await Promise.all([
     User.aggregate<{ _id: { t: mongoose.Types.ObjectId; r: string }; n: number }>([
+      { $match: { tuitionId: { $in: tuitionIds }, role: { $in: ["teacher", "student"] } } },
       { $group: { _id: { t: "$tuitionId", r: "$role" }, n: { $sum: 1 } } },
     ]),
-    User.find({ role: "tuition" }).select("tuitionId email name").lean<{ _id: mongoose.Types.ObjectId; tuitionId: mongoose.Types.ObjectId; email: string; name: string }[]>(),
-    Batch.aggregate<{ _id: mongoose.Types.ObjectId; n: number }>([{ $group: { _id: "$tuitionId", n: { $sum: 1 } } }]),
+    User.find({ role: "tuition", tuitionId: { $in: tuitionIds } })
+      .select("tuitionId email name")
+      .lean<{ _id: mongoose.Types.ObjectId; tuitionId: mongoose.Types.ObjectId; email: string; name: string }[]>(),
+    Batch.aggregate<{ _id: mongoose.Types.ObjectId; n: number }>([
+      { $match: { tuitionId: { $in: tuitionIds } } },
+      { $group: { _id: "$tuitionId", n: { $sum: 1 } } },
+    ]),
   ]);
 
   return {
