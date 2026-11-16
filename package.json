@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:local": "node scripts/dev-local.mjs",
+    "ai:migrate": "tsx scripts/migrate-ai-learning.ts",
+    "ai:verify": "tsx scripts/verify-ai-learning.mjs",
+    "test:ai-learning": "tsx --test tests/ai-learning*.test.*",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx,.mjs",

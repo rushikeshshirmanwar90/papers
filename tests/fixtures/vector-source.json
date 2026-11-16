@@ -1,0 +1,10 @@
+{
+  "chapter": "Motion in a Plane",
+  "chapterNumber": 3,
+  "topic": "Scalars and Vectors",
+  "topicNumber": "3.2",
+  "content": "The equations developed in this chapter for motion in a\nplane can be easily extended to the case of three dimensions.\n3.2  SCALARS AND VECTORS\nIn physics, we can classify quantities as scalars or\nvectors.  Basically, the difference is that a direction is\nassociated with a vector but not with a scalar .  A scalar\nquantity is a quantity with magnitude only. It is specified\ncompletely by a single number , along with the pr oper\nunit. Examples are : the distance between two points,\nmass of an object, the temperature of a body and the\ntime at which a certain  event happened.  The rules for\ncombining scalars are the  rules of ordinary algebra.\nScalars can be added, subtracted, multiplied and divided\n3.1 Introduction\n3.2 Scalars and vectors",
+  "standard": "11th",
+  "subject": "Physics",
+  "subtopics": []
+}

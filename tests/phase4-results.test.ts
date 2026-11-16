@@ -223,7 +223,8 @@ const own = async (id: string, who: string, status = 200): Promise<any> => json(
 const row = (r: any, who: string) => r.rankings.find((x: any) => x.student.id === ids[who]);
 
 before(async () => {
-  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  // MongoDB 9 rejects the library's 500ms election timeout below its 2s heartbeat.
+  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1, configSettings: { electionTimeoutMillis: 3000 } } });
   const uri = mongod.getUri();
   assert.match(uri, /^mongodb:\/\/127\.0\.0\.1:\d+\//, "tests must only run against the in-memory server");
   process.env.MONGODB_URI = uri;

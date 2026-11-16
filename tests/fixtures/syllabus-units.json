@@ -1,0 +1,1662 @@
+[
+  {
+    "nodeId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": null,
+    "subject": "",
+    "type": "exam",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "exam": "JEE Main",
+      "year": 2027,
+      "sha256": "823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd"
+    }
+  },
+  {
+    "nodeId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "subject": "Mathematics",
+    "type": "subject",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "label": "Mathematics"
+    }
+  },
+  {
+    "nodeId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "subject": "Physics",
+    "type": "subject",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "label": "Physics"
+    }
+  },
+  {
+    "nodeId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "subject": "Chemistry",
+    "type": "subject",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "label": "Chemistry"
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u01",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "SETS, RELATIONS AND FUNCTIONS",
+      "number": 1,
+      "pageStart": 1,
+      "pageEnd": 1
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u02",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "COMPLEX NUMBERS AND QUADRATIC EQUATIONS",
+      "number": 2,
+      "pageStart": 1,
+      "pageEnd": 1
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u03",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "MATRICES AND DETERMINANTS",
+      "number": 3,
+      "pageStart": 1,
+      "pageEnd": 1
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u04",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "PERMUTATIONS AND COMBINATIONS",
+      "number": 4,
+      "pageStart": 1,
+      "pageEnd": 1
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u05",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "BINOMIAL THEOREM AND ITS SIMPLE APPLICATIONS",
+      "number": 5,
+      "pageStart": 1,
+      "pageEnd": 1
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u06",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "SEQUENCE AND SERIES",
+      "number": 6,
+      "pageStart": 1,
+      "pageEnd": 1
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u07",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "LIMIT, CONTINUITY AND DIFFERENTIABILITY",
+      "number": 7,
+      "pageStart": 1,
+      "pageEnd": 1
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u08",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "INTEGRAL CALCULAS",
+      "number": 8,
+      "pageStart": 1,
+      "pageEnd": 2
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u09",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "DIFFRENTIAL EQUATIONS",
+      "number": 9,
+      "pageStart": 2,
+      "pageEnd": 2
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u10",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CO-ORDINATE GEOMETRY",
+      "number": 10,
+      "pageStart": 2,
+      "pageEnd": 2
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u11",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "THREE DIMENSIONAL GEOMETRY",
+      "number": 11,
+      "pageStart": 2,
+      "pageEnd": 2
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u12",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "VECTOR ALGEBRA",
+      "number": 12,
+      "pageStart": 2,
+      "pageEnd": 2
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u13",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "STATISTICS AND PROBABILITY",
+      "number": 13,
+      "pageStart": 2,
+      "pageEnd": 2
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:mathematics:u14",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Mathematics",
+    "subject": "Mathematics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "TRIGONOMETRY",
+      "number": 14,
+      "pageStart": 2,
+      "pageEnd": 2
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u01",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Units and Measurements",
+      "number": 1,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u02",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Kinematics",
+      "number": 2,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u03",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Laws of Motion",
+      "number": 3,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u04",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Work, Energy and Power",
+      "number": 4,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u05",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Rotational Motion",
+      "number": 5,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u06",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Gravitation",
+      "number": 6,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u07",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Properties of Solids and Liquids",
+      "number": 7,
+      "pageStart": 3,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u08",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Thermodynamics",
+      "number": 8,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u09",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Kinetic Theory of Gases",
+      "number": 9,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u10",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Oscillations and Waves",
+      "number": 10,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u11",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Electrostatics",
+      "number": 11,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u12",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Current Electricity",
+      "number": 12,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u13",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Magnetic Effects of Current and Magnetism",
+      "number": 13,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u14",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Electromagnetic Induction and Alternating Currents",
+      "number": 14,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u15",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Electromagnetic Waves",
+      "number": 15,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u16",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Optics",
+      "number": 16,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u17",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Dual Nature of Matter and Radiation",
+      "number": 17,
+      "pageStart": 6,
+      "pageEnd": 6
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u18",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Atoms and Nuclei",
+      "number": 18,
+      "pageStart": 6,
+      "pageEnd": 6
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u19",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Electronic Devices",
+      "number": 19,
+      "pageStart": 6,
+      "pageEnd": 6
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:physics:u20",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Experimental Skills",
+      "number": 20,
+      "pageStart": 6,
+      "pageEnd": 6
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u01",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "SOME BASIC CONCEPTS IN CHEMISTRY",
+      "number": 1,
+      "pageStart": 7,
+      "pageEnd": 7
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u02",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ATOMIC STRUCTURE",
+      "number": 2,
+      "pageStart": 7,
+      "pageEnd": 7
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u03",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CHEMICAL BONDING AND MOLECULAR STRUCTURE",
+      "number": 3,
+      "pageStart": 7,
+      "pageEnd": 7
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u04",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CHEMICAL THERMODYNAMICS",
+      "number": 4,
+      "pageStart": 7,
+      "pageEnd": 7
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u05",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "SOLUTIONS",
+      "number": 5,
+      "pageStart": 7,
+      "pageEnd": 7
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u06",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "EQUILIBRIUM",
+      "number": 6,
+      "pageStart": 8,
+      "pageEnd": 8
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u07",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "REDOX REACTIONS AND ELECTROCHEMISTRY",
+      "number": 7,
+      "pageStart": 8,
+      "pageEnd": 8
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u08",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CHEMICAL KINETICS",
+      "number": 8,
+      "pageStart": 8,
+      "pageEnd": 8
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u09",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CLASSIFICATION OF ELEMENTS AND PERIODICITY IN PROPERTIES",
+      "number": 9,
+      "pageStart": 8,
+      "pageEnd": 8
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u10",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "p- BLOCK ELEMENTS",
+      "number": 10,
+      "pageStart": 8,
+      "pageEnd": 8
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u11",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "d -and f- BLOCK ELEMENTS",
+      "number": 11,
+      "pageStart": 8,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u12",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "COORDINATION COMPOUNDS",
+      "number": 12,
+      "pageStart": 9,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u13",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "PURIFICATION AND CHARACTERISATION OF ORGANIC COMPOUNDS",
+      "number": 13,
+      "pageStart": 9,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u14",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "SOME BASIC PRINCIPLES OF ORGANIC CHEMISTRY",
+      "number": 14,
+      "pageStart": 9,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u15",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "HYDROCARBONS",
+      "number": 15,
+      "pageStart": 9,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u16",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ORGANIC COMPOUNDS CONTAINING HALOGENS",
+      "number": 16,
+      "pageStart": 9,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u17",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ORGANIC COMPOUNDS CONTAINING OXYGEN",
+      "number": 17,
+      "pageStart": 10,
+      "pageEnd": 10
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u18",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ORGANIC COMPOUNDS CONTAINING NITROGEN",
+      "number": 18,
+      "pageStart": 10,
+      "pageEnd": 10
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u19",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "BIOMOLECULES",
+      "number": 19,
+      "pageStart": 10,
+      "pageEnd": 10
+    }
+  },
+  {
+    "nodeId": "jee-main-2027:823ec5afaf30:chemistry:u20",
+    "versionId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd",
+    "parentId": "jee-main-2027@sha256:823ec5afaf30f19d4f0dc375159d8b843b944633e4edda58c9d910c145c32ccd:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "PRINCIPLES RELATED TO PRACTICAL CHEMISTRY",
+      "number": 20,
+      "pageStart": 10,
+      "pageEnd": 11
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": null,
+    "subject": "",
+    "type": "exam",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "exam": "NEET UG",
+      "year": 2026,
+      "sha256": "39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750"
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "subject": "Physics",
+    "type": "subject",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "label": "Physics"
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "subject": "Chemistry",
+    "type": "subject",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "label": "Chemistry"
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "subject": "Biology",
+    "type": "subject",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "label": "Biology"
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u01",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "PHYSICS AND MEASUREMENT",
+      "number": 1,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u02",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "KINEMATICS",
+      "number": 2,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u03",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "LAWS OF MOTION",
+      "number": 3,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u04",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "WORK, ENERGY, AND POWER",
+      "number": 4,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u05",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ROTATIONAL MOTION",
+      "number": 5,
+      "pageStart": 3,
+      "pageEnd": 3
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u06",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "GRAVITATION",
+      "number": 6,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u07",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "PROPERTIES OF SOLIDS AND LIQUIDS",
+      "number": 7,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u08",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "THERMODYNAMICS",
+      "number": 8,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u09",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "KINETIC THEORY OF GASES",
+      "number": 9,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u10",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "OSCILLATIONS AND WAVES",
+      "number": 10,
+      "pageStart": 4,
+      "pageEnd": 4
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u11",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ELECTROSTATICS",
+      "number": 11,
+      "pageStart": 4,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u12",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CURRENT ELECTRICITY",
+      "number": 12,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u13",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "MAGNETIC EFFECTS OF CURRENT AND MAGNETISM",
+      "number": 13,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u14",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ELECTROMAGNETIC INDUCTION AND ALTERNATING CURRENTS",
+      "number": 14,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u15",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ELECTROMAGNETIC WAVES",
+      "number": 15,
+      "pageStart": 5,
+      "pageEnd": 5
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u16",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "OPTICS",
+      "number": 16,
+      "pageStart": 5,
+      "pageEnd": 6
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u17",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "DUAL NATURE OF MATTER AND RADIATION",
+      "number": 17,
+      "pageStart": 6,
+      "pageEnd": 6
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u18",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ATOMS AND NUCLEI",
+      "number": 18,
+      "pageStart": 6,
+      "pageEnd": 6
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u19",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ELECTRONIC DEVICES",
+      "number": 19,
+      "pageStart": 6,
+      "pageEnd": 6
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:physics:u20",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Physics",
+    "subject": "Physics",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "EXPERIMENTAL SKILLS",
+      "number": 20,
+      "pageStart": 6,
+      "pageEnd": 7
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u01",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "SOME BASIC CONCEPTS IN CHEMISTRY",
+      "number": 1,
+      "pageStart": 8,
+      "pageEnd": 8
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u02",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ATOMIC STRUCTURE",
+      "number": 2,
+      "pageStart": 8,
+      "pageEnd": 8
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u03",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CHEMICAL BONDING AND MOLECULAR STRUCTURE",
+      "number": 3,
+      "pageStart": 8,
+      "pageEnd": 8
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u04",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CHEMICAL THERMODYNAMICS",
+      "number": 4,
+      "pageStart": 8,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u05",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "SOLUTIONS",
+      "number": 5,
+      "pageStart": 9,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u06",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "EQUILIBRIUM",
+      "number": 6,
+      "pageStart": 9,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u07",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "REDOX REACTIONS AND ELECTROCHEMISTRY",
+      "number": 7,
+      "pageStart": 9,
+      "pageEnd": 9
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u08",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CHEMICAL KINETICS",
+      "number": 8,
+      "pageStart": 9,
+      "pageEnd": 10
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u09",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CLASSIFICATION OF ELEMENTS AND PERIODICITY IN PROPERTIES",
+      "number": 9,
+      "pageStart": 10,
+      "pageEnd": 10
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u10",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "P- BLOCK ELEMENTS",
+      "number": 10,
+      "pageStart": 10,
+      "pageEnd": 10
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u11",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "d - and f- BLOCK ELEMENTS",
+      "number": 11,
+      "pageStart": 10,
+      "pageEnd": 10
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u12",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "CO-ORDINATION COMPOUNDS",
+      "number": 12,
+      "pageStart": 10,
+      "pageEnd": 10
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u13",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "PURIFICATION AND CHARACTERISATION OF ORGANIC COMPOUNDS",
+      "number": 13,
+      "pageStart": 10,
+      "pageEnd": 11
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u14",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "SOME BASIC PRINCIPLES OF ORGANIC CHEMISTRY",
+      "number": 14,
+      "pageStart": 11,
+      "pageEnd": 11
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u15",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "HYDROCARBONS",
+      "number": 15,
+      "pageStart": 11,
+      "pageEnd": 11
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u16",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ORGANIC COMPOUNDS CONTAINING HALOGENS",
+      "number": 16,
+      "pageStart": 11,
+      "pageEnd": 11
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u17",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ORGANIC COMPOUNDS CONTAINING OXYGEN",
+      "number": 17,
+      "pageStart": 11,
+      "pageEnd": 12
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u18",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "ORGANIC COMPOUNDS CONTAINING NITROGEN",
+      "number": 18,
+      "pageStart": 12,
+      "pageEnd": 12
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u19",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "BIOMOLECULES",
+      "number": 19,
+      "pageStart": 12,
+      "pageEnd": 12
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:chemistry:u20",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Chemistry",
+    "subject": "Chemistry",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "PRINCIPLES RELATED TO PRACTICAL CHEMISTRY",
+      "number": 20,
+      "pageStart": 12,
+      "pageEnd": 13
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u01",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Diversity in Living World",
+      "number": 1,
+      "pageStart": 14,
+      "pageEnd": 14
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u02",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Structural Organisation in Animals and Plants",
+      "number": 2,
+      "pageStart": 14,
+      "pageEnd": 14
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u03",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Cell Structure and Function",
+      "number": 3,
+      "pageStart": 14,
+      "pageEnd": 14
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u04",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Plant Physiology",
+      "number": 4,
+      "pageStart": 14,
+      "pageEnd": 15
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u05",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Human Physiology",
+      "number": 5,
+      "pageStart": 15,
+      "pageEnd": 15
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u06",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Reproduction",
+      "number": 6,
+      "pageStart": 16,
+      "pageEnd": 16
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u07",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Genetics and Evolution",
+      "number": 7,
+      "pageStart": 16,
+      "pageEnd": 16
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u08",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Biology and Human Welfare",
+      "number": 8,
+      "pageStart": 16,
+      "pageEnd": 17
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u09",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Biotechnology and Its Applications",
+      "number": 9,
+      "pageStart": 17,
+      "pageEnd": 17
+    }
+  },
+  {
+    "nodeId": "neet-ug-2026:39dbf7882811:biology:u10",
+    "versionId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750",
+    "parentId": "neet-ug-2026@sha256:39dbf78828116ebfe5cf7d1063b28db6b72148156d5364ba7a7381afeed4d750:subject:Biology",
+    "subject": "Biology",
+    "type": "unit",
+    "origin": "official",
+    "reviewStatus": "source-audited",
+    "data": {
+      "title": "Ecology and Environment",
+      "number": 10,
+      "pageStart": 17,
+      "pageEnd": 17
+    }
+  }
+]

@@ -11,6 +11,14 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
+const { loadEnvConfig } = createRequire(import.meta.url)('@next/env');
+
+loadEnvConfig(process.cwd(), true);
+const demo = process.env.AI_LEARNING_DEMO_ENABLED === 'true';
+const args = process.argv.slice(2);
+if (demo && args.some(arg => arg === '-H' || arg.startsWith('--hostname'))) {
+  throw new Error('Synthetic demos bind to loopback. Disable AI_LEARNING_DEMO_ENABLED for LAN development.');
+}
 
 const nextBin = createRequire(import.meta.url).resolve("next/dist/bin/next");
 
@@ -22,10 +30,10 @@ function networkAddresses() {
     .map((net) => net.address);
 }
 
-const child = spawn(process.execPath, [nextBin, "dev", ...process.argv.slice(2)], {
+const child = spawn(process.execPath, [nextBin, "dev", ...args, ...(demo ? ['--hostname', '127.0.0.1'] : [])], {
   stdio: ["inherit", "pipe", "inherit"],
   // Next colours its output only when it writes to a terminal; it now writes to this script.
-  env: process.stdout.isTTY && !("NO_COLOR" in process.env) ? { FORCE_COLOR: "1", ...process.env } : process.env,
+  env: { ...(process.stdout.isTTY && !("NO_COLOR" in process.env) ? { FORCE_COLOR: '1' } : {}), ...process.env, AI_LEARNING_LOCAL_BOUND: demo ? 'true' : 'false' },
 });
 
 // Next's line looks like "  - Local:        http://localhost:3000". The port
@@ -47,6 +55,7 @@ child.stdout.on("data", (text) => {
     if (!local) continue;
     networkShown = true;
     const [, protocol, port] = local;
+    if (demo) { process.stdout.write('  Synthetic demos enabled: loopback access only.\n'); continue; }
     const addresses = networkAddresses();
     const urls = addresses.length ? addresses.map((ip) => `${protocol}://${ip}:${port}`) : ["(not connected to a network)"];
     for (const url of urls) process.stdout.write(`${line.replace(/Local:.*/, `Network:      ${url}`)}\n`);
