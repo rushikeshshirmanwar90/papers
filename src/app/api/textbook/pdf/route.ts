@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
             "X-Chapter-Marks": String(ch.marks ?? 5),
           },
         });
-      } catch (err) {
+      } catch {
         return NextResponse.json({
           ok: false,
           error: `Chapter PDF file not found on disk: ${filePath}`,
@@ -154,8 +154,8 @@ export async function GET(req: NextRequest) {
         const copiedPages = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
         copiedPages.forEach((page) => mergedPdf.addPage(page));
         mergedCount++;
-      } catch (e) {
-        // Skip or continue if one chapter file is missing
+      } catch {
+        // Skip chapters whose PDF file is missing from disk.
       }
     }
 

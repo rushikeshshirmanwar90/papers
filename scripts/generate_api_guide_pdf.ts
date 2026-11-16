@@ -139,7 +139,6 @@ class DocBuilder {
         width: textWidth + 12,
         height: 16,
         color: rgb(0.12, 0.38, 0.3),
-        borderRadius: 3,
       });
       this.currentPage.drawText(item, {
         x: badgeX + 6,
@@ -270,7 +269,6 @@ class DocBuilder {
       color: COLORS.accentLight,
       borderColor: COLORS.accent,
       borderWidth: 1,
-      borderRadius: 4,
     });
 
     this.currentPage.drawText(`*  ${title}:`, {
@@ -310,7 +308,6 @@ class DocBuilder {
       color: COLORS.codeBg,
       borderColor: COLORS.codeBorder,
       borderWidth: 1,
-      borderRadius: 4,
     });
 
     // Optional header strip
