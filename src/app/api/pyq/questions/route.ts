@@ -4,6 +4,11 @@ import { route } from "@/lib/http";
 import { ANSWER_FIELDS, answersOf, nodeFilter, QUESTION_FIELDS, readNode, readPage, statsOf } from "@/lib/practice";
 import { practiceBankOf, readSubject } from "@/lib/pyq";
 import Question from "@/models/Question";
+import { personalProfile } from '@/lib/ai-learning/profiles.mjs';
+import { buildCompanion } from '@/lib/ai-learning/companion.mjs';
+import { exactLearningNode, learningQualityFilter } from '@/lib/ai-learning/practice-policy';
+import { connectDB } from '@/lib/db';
+import { HttpError } from '@/lib/http';
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +34,18 @@ export const GET = route(async (req) => {
 
   const bank = practiceBankOf(user);
   if (!bank) return { ...empty, available: false };
-  const base = await nodeFilter(bank, node);
+  let base = await nodeFilter(bank, node);
   if (!base) return empty;
+  const learningCell = params.get('learningCell');
+  if (learningCell) {
+    if (learningCell.length > 2000) throw new HttpError(400, 'Choose a valid learning topic.');
+    const profile = await personalProfile(await connectDB(), session);
+    const area = buildCompanion(profile).areas.find((a: { key: string }) => a.key === learningCell);
+    if (!area) throw new HttpError(404, 'Choose a topic from your current study plan.');
+    const exact = exactLearningNode(area, learningCell);
+    if (!exact || exact.subject !== node.subject || exact.standard !== node.standard || exact.chapter !== node.chapter || exact.topic !== node.topic) return empty;
+    base = { ...base, ...learningQualityFilter(area.understanding?.name) };
+  }
 
   // The student's answers within this chapter or topic.
   const mine = await answersOf(user._id as Types.ObjectId, subject);

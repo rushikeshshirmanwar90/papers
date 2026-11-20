@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
-import { Public_Sans } from "next/font/google";
+import localFont from "next/font/local";
 
-const publicSans = Public_Sans({ subsets: ["latin"], variable: "--font-admin", weight: ["400", "500", "600", "700"] });
+// Self-hosted (not next/font/google) so `next build` needs no network access.
+const publicSans = localFont({
+  src: "../../../node_modules/@fontsource-variable/public-sans/files/public-sans-latin-wght-normal.woff2",
+  variable: "--font-admin",
+  weight: "100 900",
+});
 
 export const metadata: Metadata = {
   title: { default: "PCMB Admin", template: "%s | PCMB Admin" },
