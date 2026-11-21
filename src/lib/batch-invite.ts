@@ -73,7 +73,7 @@ export function readExpiryDays(body: Record<string, unknown>): number | null {
 export function inviteProblem(batch: BatchDoc): string | null {
   if (!batch.active) return "This batch is turned off.";
   // Older batches may have no class; students would join without one.
-  if (!batch.standard) return "Set this batch's class (11th or 12th) before students join it.";
+  if (!batch.standard && !batch.bothStandards) return "Set this batch's class (11th, 12th or both) before students join it.";
   const program = programOf(batch);
   return program && !isOffered(program) ? notOffered(program) : null;
 }

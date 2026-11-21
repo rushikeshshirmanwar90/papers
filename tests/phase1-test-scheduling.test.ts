@@ -224,12 +224,23 @@ describe("setting a test", () => {
     await create(setup({ batchIds: [ids.batch, String(foreign._id)], startNow: true, closesAt: iso(3 * HOUR) }), 404);
   });
 
-  test("batches of different exams or classes can't share a test, and questions must belong to the exam", async () => {
+  test("batches of different exams can't share a test, and questions must belong to the exam and class", async () => {
     const tuitionId = (await m.Batch.findById(ids.batch))!.tuitionId;
     const neet = await m.Batch.create({ tuitionId, name: "NEET", track: "NEET", subjects: ["Physics"], teachers: [] });
     await create(setup({ batchIds: [ids.batch, String(neet._id)], startNow: true, closesAt: iso(3 * HOUR) }), 400);
     const twelfth = await m.Batch.create({ tuitionId, name: "12 JEE", track: "JEE", standard: "12th", subjects: ["Physics"], teachers: [] });
     await create(setup({ batchId: String(twelfth._id), startNow: true, closesAt: iso(3 * HOUR) }), 400); // 11th questions, 12th batch
+  });
+
+  test("an 11th batch and a 12th batch together share one test with questions from both classes", async () => {
+    const tuitionId = (await m.Batch.findById(ids.batch))!.tuitionId;
+    const eleventh = await m.Batch.create({ tuitionId, name: "11 JEE B", track: "JEE", standard: "11th", subjects: ["Physics"], teachers: [] });
+    const twelfth = await m.Batch.create({ tuitionId, name: "12 JEE B", track: "JEE", standard: "12th", subjects: ["Physics"], teachers: [] });
+    // The 11th questions are allowed, because the 11th batch is in the test too.
+    const { test } = await create(setup({ batchIds: [String(eleventh._id), String(twelfth._id)], startNow: true, closesAt: iso(3 * HOUR) }));
+    assert.equal(test.standard, "both");
+    const saved = await m.TestRoom.findById(test.id).lean<{ batchIds: unknown[] }>();
+    assert.equal(saved!.batchIds.length, 2);
   });
 
   test("a batch whose program has no question bank can't get a test", async () => {

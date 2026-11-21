@@ -1,7 +1,7 @@
 import type { Session } from '@/lib/auth';
 import { HttpError, isObjectId } from '@/lib/http';
 import { batchForTest } from '@/lib/teaching';
-import { programOf, questionBankOf, SUBJECTS, type SchoolSubject } from '@/lib/school';
+import { BOTH_STANDARDS, programOf, questionBankOf, SUBJECTS, type SchoolSubject } from '@/lib/school';
 import type { BatchDoc } from '@/models/Batch';
 import { verifyQuestions, type BankScope } from '@/lib/makePdfBank';
 import TestRoom, { type TestRoomDoc } from '@/models/TestRoom';
@@ -55,11 +55,15 @@ export async function validateSubjectQuestions(batches: BatchDoc[], subjects: st
  */
 export function sharedScope(batches: BatchDoc[], subject: string, fallbackStandard = ''): BankScope {
   const banks = new Set(batches.map(b => questionBankOf(programOf(b))));
-  const standards = new Set(batches.map(b => b.standard).filter(Boolean));
-  if (banks.size !== 1 || standards.size > 1) throw new HttpError(400, 'These batches have different exams or classes, so they cannot share one test. Pick batches of the same exam and class.');
+  if (banks.size !== 1) throw new HttpError(400, 'These batches have different exams, so they cannot share one test. Pick batches of the same exam.');
   const exam = [...banks][0];
   if (!exam) throw new HttpError(400, 'Every selected batch needs a question bank.');
-  return { course: 'Competitive', standard: [...standards][0] ?? fallbackStandard, exam, subject, source: 'regular', chapters: [], topics: [], years: [] };
+  // The test covers every class its batches are taught: 11th and 12th batches together, or a batch
+  // of both classes with any other, take questions from both. Batches all of one class keep that class.
+  const standards = new Set(batches.map(b => b.standard).filter(Boolean));
+  const mixed = standards.size > 1 || (standards.size === 1 && batches.some(b => !b.standard && b.bothStandards));
+  const standard = mixed ? BOTH_STANDARDS : [...standards][0] ?? fallbackStandard;
+  return { course: 'Competitive', standard, exam, subject, source: 'regular', chapters: [], topics: [], years: [] };
 }
 /** Questions that name a bank question (a sourceId) must belong to the scope; none is stored from another exam, class or subject. */
 export async function mustBeBankQuestions(scope: BankScope, questions: { sourceId?: unknown }[]) {

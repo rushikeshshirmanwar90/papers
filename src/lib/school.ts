@@ -18,6 +18,8 @@ export const SUBJECTS_BY_TRACK: Record<Track, SchoolSubject[]> = {
 };
 
 export const STANDARDS = ["11th", "12th"] as const;
+/** What a request sends as a batch's (or a question-bank scope's) class to mean both 11th and 12th. */
+export const BOTH_STANDARDS = "both";
 export type SchoolStandard = (typeof STANDARDS)[number];
 
 export const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const; // Sunday = 0

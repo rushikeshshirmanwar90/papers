@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { badRequest } from "@/lib/http";
+import { BOTH_STANDARDS } from "@/lib/school";
 import Question, { NOT_A_BANK_COPY, NOT_FLAGGED } from "@/models/Question";
 
 // Question discovery for the one-page Make PDF screen. Read-only: it never
@@ -103,7 +104,9 @@ export function readScope(raw: Record<string, unknown>): BankScope {
   const course = raw.course;
   if (course !== "Foundation" && course !== "Competitive") throw badRequest("Choose Foundation or Competitive.");
   const standard = raw.standard;
-  if (typeof standard !== "string" || !COURSE_CLASSES[course].includes(standard)) throw badRequest(`Choose a class: ${COURSE_CLASSES[course].join(" or ")}.`);
+  // Competitive also takes "both" (11th and 12th), for batches that are taught both classes.
+  const both = course === "Competitive" && standard === BOTH_STANDARDS;
+  if (typeof standard !== "string" || (!both && !COURSE_CLASSES[course].includes(standard))) throw badRequest(`Choose a class: ${COURSE_CLASSES[course].join(" or ")}${course === "Competitive" ? ", or both" : ""}.`);
   const subject = raw.subject;
   if (typeof subject !== "string") throw badRequest("Choose a subject.");
   let exam: CompetitiveExam | null = null;
@@ -130,8 +133,26 @@ export function readScope(raw: Record<string, unknown>): BankScope {
   };
 }
 
+const sourcesOf = (scope: Pick<BankScope, "source">): QuestionSource[] => (Array.isArray(scope.source) ? scope.source : [scope.source]);
+
+/** What a question's source must say to be one of `exam`'s PYQs (see pyqExamOf). */
+function pyqConditions(exam: CompetitiveExam): Record<string, unknown>[] {
+  // Never both exams in one source.
+  const rival: CompetitiveExam = exam === "JEE" ? "NEET" : "JEE";
+  return [
+    { source: { $regex: OWN[exam], $options: "i" } },
+    { source: { $not: new RegExp(OTHER, "i") } },
+    { source: { $regex: YEAR } },
+    { source: { $not: own(rival) } },
+  ];
+}
+
+const yearCondition = (years: string[]) => ({ $or: years.map((year) => ({ source: { $regex: `\\b${year}\\b` } })) });
+
 /**
- * The Mongo filter for a scope. `skip` leaves out a level of choice, so the
+ * The Mongo filter for a scope. With PYQs among the sources, chosen years keep
+ * only those years' PYQs (alongside every regular question when both are
+ * chosen). `skip` leaves out a level of choice, so the
  * options for it can be counted without that choice narrowing them.
  */
 export function scopeFilter(scope: BankScope, skip: { chapters?: boolean; topics?: boolean; years?: boolean } = {}): Record<string, unknown> {
@@ -141,20 +162,20 @@ export function scopeFilter(scope: BankScope, skip: { chapters?: boolean; topics
     // Broken options: not offered for new tests or papers (and refused if sent) until fixed.
     ...NOT_FLAGGED,
     examCategory: scope.course === "Foundation" ? "Foundation" : "JEE/NEET",
-    standard: scope.standard,
+    standard: scope.standard === BOTH_STANDARDS ? { $in: [...COURSE_CLASSES.Competitive] } : scope.standard,
     subject: { $in: BANK_NAMES[scope.subject] ?? [scope.subject] },
     answerType: "MCQ",
   };
   // Regular already includes sourced questions. The union must keep that meaning.
-  const sources = Array.isArray(scope.source) ? scope.source : [scope.source];
+  const sources = sourcesOf(scope);
+  const years = !skip.years && scope.years.length ? yearCondition(scope.years) : null;
   if (!sources.includes("regular") && sources.includes("pyq") && scope.exam) {
-    and.push({ source: { $regex: OWN[scope.exam], $options: "i" } });
-    and.push({ source: { $not: new RegExp(OTHER, "i") } });
-    and.push({ source: { $regex: YEAR } });
-    // Never both exams in one source.
-    const rival: CompetitiveExam = scope.exam === "JEE" ? "NEET" : "JEE";
-    and.push({ source: { $not: own(rival) } });
-    if (!skip.years && scope.years.length) and.push({ $or: scope.years.map((year) => ({ source: { $regex: `\\b${year}\\b` } })) });
+    and.push(...pyqConditions(scope.exam));
+    if (years) and.push(years);
+  } else if (sources.includes("regular") && sources.includes("pyq") && scope.exam && years) {
+    // Both, with years chosen: every regular question, and of the exam's PYQs only those years'.
+    const pyq = pyqConditions(scope.exam);
+    and.push({ $or: [{ $nor: [{ $and: pyq }] }, { $and: [...pyq, years] }] });
   }
   if (!skip.chapters && scope.chapters.length) filter.chapter = { $in: scope.chapters.map(exactly) };
   if (!skip.topics && scope.topics.length) filter.topic = { $in: scope.topics.map(exactly) };
@@ -208,9 +229,10 @@ export async function scopeOptions(scope: BankScope): Promise<ScopeOptions> {
       { $match: scopeFilter(scope, { topics: true, years: true }) },
       { $group: { _id: { chapter: "$chapter", topic: "$topic" }, n: { $sum: 1 } } },
     ]),
-    scope.source === "pyq"
+    // Years: whenever PYQs are among the sources, counted over the PYQs alone.
+    sourcesOf(scope).includes("pyq") && scope.exam
       ? Question.aggregate<{ _id: string | null; n: number }>([
-          { $match: scopeFilter(scope, { years: true }) },
+          { $match: scopeFilter({ ...scope, source: "pyq" }, { years: true }) },
           { $group: { _id: { $regexFind: { input: "$source", regex: YEAR } }, n: { $sum: 1 } } },
           { $project: { _id: { $arrayElemAt: ["$_id.captures", 0] }, n: 1 } },
         ])

@@ -132,6 +132,16 @@ describe("Competitive scopes", () => {
     assert.equal((await bank.scopeOptions(comp())).total, got.length);
   });
 
+  test("Competitive can search both classes at once; Foundation can't", async () => {
+    const eleventh = (await found(comp())).sort();
+    const both = (await found(comp({ standard: "both" }))).sort();
+    for (const id of eleventh) assert.ok(both.includes(id), "every 11th question is in both");
+    const neetBio = await found(comp({ exam: "NEET", standard: "both", subject: "Biology" }));
+    assert.ok(neetBio.includes(ids.bio) && neetBio.includes(ids.botany), "12th questions are in both");
+    assert.equal(bank.readScope({ course: "Competitive", standard: "both", exam: "JEE", subject: "Physics" }).standard, "both");
+    assert.throws(() => bank.readScope({ course: "Foundation", standard: "both", subject: "Science" }));
+  });
+
   test("NEET Biology includes Botany and Zoology names", async () => {
     const got = await found(comp({ exam: "NEET", standard: "12th", subject: "Biology" }));
     assert.ok(got.includes(ids.bio) && got.includes(ids.botany));
@@ -198,6 +208,22 @@ describe("PYQs", () => {
     assert.deepEqual(await found(comp({ source: "pyq", years: ["2021"] })), [ids.physJee21]);
     assert.equal((await bank.scopeOptions(comp({ source: "pyq", years: ["2021"] }))).total, 1);
     assert.equal((await bank.scopeOptions(comp({ source: "pyq", years: ["2021"] }))).years.length, 2, "years stay listed while one is chosen");
+  });
+
+  test("regular and PYQs together: years are listed, and chosen years keep every regular question but only those years' PYQs", async () => {
+    const both = (over: Doc = {}) => comp({ source: ["regular", "pyq"], ...over });
+    // The years offered are the PYQs' own, counted over PYQs only.
+    assert.deepEqual((await bank.scopeOptions(both())).years, [{ name: "2021", count: 1 }, { name: "2020", count: 1 }]);
+    // No year chosen: the whole bank, as before.
+    const all = (await found(comp())).sort();
+    assert.deepEqual((await found(both())).sort(), all);
+    // 2021 chosen: the 2020 JEE PYQ goes; everything that isn't a JEE PYQ (BITSAT, mixed, no year…) stays.
+    const in2021 = (await found(both({ years: ["2021"] }))).sort();
+    assert.deepEqual(in2021, all.filter((id) => id !== ids.physJee20));
+    assert.ok(in2021.includes(ids.physJee21));
+    assert.equal((await bank.scopeOptions(both({ years: ["2021"] }))).total, in2021.length);
+    // Regular alone never filters by year, even if years are sent.
+    assert.deepEqual((await found(comp({ years: ["2021"] }))).sort(), all);
   });
 
   test("the source classifier", () => {

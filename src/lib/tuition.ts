@@ -10,6 +10,7 @@ import {
   programFromTrack,
   programOf,
   PROGRAMS,
+  BOTH_STANDARDS,
   STANDARDS,
   SUBJECTS,
   subjectProblem,
@@ -196,12 +197,18 @@ export async function readBatch(body: Record<string, unknown>, tuitionId: string
   const fields: Partial<BatchDoc> & Record<string, unknown> = { program, track: PROGRAM_INFO[program].track, subjects };
   if (body.name !== undefined || !existing) fields.name = text(body, "name", { required: true, max: 80, label: "a batch name" });
   const given = (value: unknown) => value !== undefined && value !== null && value !== "";
-  if (given(body.standard)) {
+  if (body.standard === BOTH_STANDARDS) {
+    // Both classes' syllabus is taught in the one batch.
+    fields.standard = undefined;
+    fields.bothStandards = true;
+  } else if (given(body.standard)) {
     fields.standard = oneOf(body, "standard", STANDARDS, "the class");
+    fields.bothStandards = false;
   } else if (byProgram && (body.standard !== undefined || !existing)) {
-    throw badRequest("Choose the class: 11th or 12th.");
+    throw badRequest("Choose the class: 11th, 12th or both.");
   } else if (body.standard !== undefined) {
     fields.standard = undefined; // an older app's "11th & 12th"
+    fields.bothStandards = true;
   }
   if (given(body.academicYear)) {
     fields.academicYear = readAcademicYear(body.academicYear);
@@ -275,6 +282,8 @@ export function batchOut(batch: BatchDoc, names: NameMap, studentCount: number, 
     program: programOf(batch),
     track: batch.track,
     standard: batch.standard ?? null,
+    // With no `standard`: true for a batch of both classes, false for one whose class isn't set yet.
+    bothStandards: !batch.standard && !!batch.bothStandards,
     academicYear: batch.academicYear ?? null,
     subjects: batch.subjects,
     venue: batch.venue,

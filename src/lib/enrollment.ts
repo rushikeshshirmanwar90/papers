@@ -87,7 +87,7 @@ export async function decideEnrollments(tuitionId: string, adminName: string, id
     if (action === "approve" && !batches.has(key)) batches.set(key, (await Batch.findOne({ _id: request.batchId, tuitionId })) as BatchDoc | null);
     const batch = action === "approve" ? (batches.get(key) ?? null) : null;
     // A batch with no class set can't take students: leave the request waiting until the tuition sets it.
-    if (batch?.active && !batch.standard) {
+    if (batch?.active && !batch.standard && !batch.bothStandards) {
       fail(inviteProblem(batch)!);
       continue;
     }

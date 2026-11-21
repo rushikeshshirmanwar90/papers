@@ -27,6 +27,11 @@ export interface BatchDoc extends Document {
   /** The track the program stands for, kept for older app versions. */
   track: Track;
   standard?: SchoolStandard;
+  /**
+   * For both 11th and 12th: both classes' syllabus is taught, and `standard` is unset.
+   * Older batches with no class and no flag are "class not set yet".
+   */
+  bothStandards?: boolean;
   /** e.g. "2026-2027"; older batches have none. */
   academicYear?: string;
   subjects: SchoolSubject[];
@@ -48,6 +53,7 @@ const BatchSchema = new Schema<BatchDoc>(
     program: { type: String, enum: PROGRAMS },
     track: { type: String, enum: TRACKS, required: true },
     standard: { type: String, enum: STANDARDS },
+    bothStandards: { type: Boolean, default: false },
     academicYear: { type: String, match: /^\d{4}-\d{4}$/ },
     subjects: { type: [{ type: String, enum: SUBJECTS }], default: [] },
     venue: { type: String, default: "", trim: true },

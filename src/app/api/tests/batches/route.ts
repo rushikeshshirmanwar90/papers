@@ -18,6 +18,7 @@ export const GET = route(async (req) => {
       name: b.name,
       program: programOf(b),
       standard: b.standard ?? null,
+      bothStandards: !b.standard && !!b.bothStandards,
       subjects: b.subjects,
       questionBank: questionBankOf(programOf(b)),
     })),

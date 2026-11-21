@@ -322,6 +322,18 @@ describe("creating batches", () => {
     assert.equal(student.batch.id, batch.id);
   });
 
+  test("a batch can be for both 11th and 12th: no single class, marked as both", async () => {
+    const { batch } = await createBatch({ program: "JEE", standard: "both", name: "JEE 11th & 12th A" });
+    assert.equal(batch.standard, null);
+    assert.equal(batch.bothStandards, true);
+    // A single class is not both.
+    const { batch: one } = await createBatch({ program: "JEE", standard: "11th", name: "JEE 11th Z" });
+    assert.equal(one.bothStandards, false);
+    // A student of either class fits a batch of both.
+    const { student } = await createStudent(newStudent({ program: "JEE", track: "JEE", standard: "12th", batchId: batch.id }));
+    assert.equal(student.batch.id, batch.id);
+  });
+
   test("older app versions still create batches with a track", async () => {
     const { batch } = await createBatch({ track: "JEE", standard: null, name: "Old app JEE", subjects: ["Physics"] });
     assert.equal(batch.program, "JEE");
