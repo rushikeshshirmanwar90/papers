@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { QUEST_SUPPORT_EMAIL } from "@/lib/quest-public";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy – PCMB Paper Reader",
-  description: "How PCMB Paper Reader collects, uses and protects your data.",
+  title: "Privacy Policy – Quest",
+  description: "How the Quest app and PCMB Paper Reader collect, use and protect your data.",
 };
 
-const LAST_UPDATED = "15 November 2026";
-const CONTACT_EMAIL = process.env.SMTP_USER ?? "support@pcmb.app";
+const LAST_UPDATED = "22 November 2026";
+const CONTACT_EMAIL = QUEST_SUPPORT_EMAIL;
 
 export default function PrivacyPolicyPage() {
   return (
@@ -18,7 +19,8 @@ export default function PrivacyPolicyPage() {
         <h1 className="text-3xl font-bold text-slate-900">Privacy Policy</h1>
         <p className="text-sm text-slate-500">Last updated: {LAST_UPDATED}</p>
         <p className="mt-3 text-slate-600">
-          This policy explains what data PCMB Paper Reader collects, how it is
+          This policy explains what data the Quest mobile app and the PCMB Paper
+          Reader platform behind it collect, how it is
           used, and the choices you have. By using the platform you agree to these
           terms.
         </p>
